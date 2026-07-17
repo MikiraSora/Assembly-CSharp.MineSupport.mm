@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Assembly-CSharp.MineSupport.mm</AssemblyName>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- 输出目录仅保留 patch .mm.dll 及其 PDB，不复制游戏或 MonoMod 依赖。 -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <!-- MonoMod patch 常见的 extern orig_ 声明、成员隐藏及替换会触发这些编译器警告。 -->
+    <NoWarn>$(NoWarn);CS0626;CS0108;CS0114</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 游戏目标程序集：只用于编译期类型解析，运行时由 BepInEx/MonoMod.Loader patch 原程序集。 -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>F:\SDEZ_165\Package\Sinmai_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- 基础 Unity 类型。后续 patch 若使用其他 Unity 模块，应按需增加引用。 -->
+    <Reference Include="UnityEngine">
+      <HintPath>F:\SDEZ_165\Package\Sinmai_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>F:\SDEZ_165\Package\Sinmai_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- 使用游戏 BepInEx 自带的 MonoMod，确保 patch 属性与运行时加载器版本一致。 -->
+    <Reference Include="MonoMod">
+      <HintPath>F:\SDEZ_165\Package\BepInEx\core\MonoMod.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
