@@ -13,6 +13,7 @@ obj/
 staging/
 temp/
 tmp/
+artifacts/
 
 # Logs
 *.log
