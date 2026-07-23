@@ -1,89 +1,129 @@
-# Mine 功能移植实施记录
+# Mine 机制实施与验证记录
 
-状态：已完成第一版 MonoMod patch，Debug/Release 编译通过，已完成离线 MonoMod 合并验证；尚未在实际游戏流程中回归。
+最后更新：2026-07-24 03:26:31 +08:00
 
-## 参考资料
+状态：设计 Q001-Q026 已冻结，Q012/Q013 的游戏端读取严格度已按用户后续要求修订；代码、资源、自动化测试、四 patch 离线合并/IL 校验和目标部署已完成。按用户要求，助手不得自行启动游戏，因此实机矩阵与帧耗时对照尚未执行，不能把本记录标记为完整验收。
 
-- `F:\MajdataEdit\docs\Mine_Implementation_Audit.md`
-- `F:\MajdataView\docs\Mine功能与实现细节.md`
-
-参考资料只用于确认 Mine 的语义和 MA2 标记契约。本项目没有复制 MajdataView 的 Unity 物件实现，实际运行逻辑全部针对游戏的 `Assembly-CSharp.dll` 重新组织。
-
-## 目标环境
+## 目标与部署
 
 - 目标程序集：`F:\SDEZ_165\Package\Sinmai_Data\Managed\Assembly-CSharp.dll`
-- 部署方式：BepInEx `MonoMod.Loader` 加载 `Assembly-CSharp.MineSupport.mm.dll`
-- 编译目标：`.NET Framework 4.7.2`，引用游戏随附的经典 `MonoMod.dll`
-- 运行时依赖：Mine patch 不新增外部运行时 DLL；`MonoMod` 引用只用于 patch 元数据，离线合并后不会保留在目标程序集引用中
+- MonoMod：`F:\SDEZ_165\Package\BepInEx\core\MonoMod.dll`，程序集版本 `20.5.21.5`
+- Patch：`F:\SDEZ_165\Package\BepInEx\monomod\Assembly-CSharp.MineSupport.mm.dll`
+- 视觉资源：`F:\SDEZ_165\Package\BepInEx\monomod\MineSupport\MineVisuals`
+- 实际 patch 顺序：AssetsPatch、DpPatches、MineSupport、SoflanSupport
+- 部署前旧 Mine DLL/PDB 已保存为 `.predeploy-20260724_015129` 后缀；线程上下文清理修订前的 DLL 另存为 `.pre-context-reset-20260724_020500`，视觉/生命周期最终版前另存为 `.pre-final-20260724_022107`。本次混合修饰读取改动前的 Mine 与 Soflan DLL/PDB 均另存为 `.pre-mixed-modifiers-20260724_031602`。这些后缀都不会被 MonoMod.Loader 当成 patch 加载。
 
-## 已确认的产品决策
+Release DLL SHA-256：
 
-1. **输入格式**：使用 MA2 标准记录尾字段的精确小写 `!m`。支持单独的 `!m`，以及与颜色/其他修饰字段同处一个尾字段的 `!m#...`、`#...!m` 形式；不新增 MA2 记录类型。
-2. **结果反转**：Mine 原始结果为 `TooFast` 或 `TooLate` 时，正式结果记为 `Critical`；其他任意 `ETiming` 记为 `TooLate`。物件内部的原始结果仍保留到正式结算边界。
-3. **覆盖范围**：所有带 `!m` 的标准记录启用 Mine，优先于 Break、EX、Each 的表现和分类，不重复生成结果。
-4. **视觉方案**：第一版使用 `SpriteRenderer.color` 灰色 tint，统一经过可替换的 `MineVisual` 后端处理，保留 alpha；后续可替换为 shader/material，不改变输入、状态和结算层。
-5. **AutoPlay**：Mine 物件跳过 AutoPlay 自动按下、自动保持、自动触点和自动滑动，等待普通判定窗口自然超时并按 Mine 规则结算；普通物件保持原版 AutoPlay，手动输入和 DJAuto 仍可触发 Mine。
-6. **统计方案**：采用方案 B，不增加独立 Mine 统计桶或独立分母。Mine 沿用 Tap/Break/Hold/Slide/Touch 的底层 `SetResult`、权重、Combo 和已有上传结构。
-7. **可见反馈**：Mine 保留内部判定、`SetResult`、Combo 更新、超时和销毁，但抑制玩家可见的 JudgeGrade、Fast/Late、普通判定音、Just/烟花、Hold/Break 闪光、Touch 特效和 Slide 成功对象。
-8. **Slide 粒度**：按 MA2 记录粒度处理。星头和轨迹可以分别带 `!m`；ConnectSlide 不额外传播标记，也不额外制造结果。
-9. **回归范围**：覆盖无标记回归、所有物件族、Mine 与 Break/EX/Each 组合、AutoPlay 避让、Slide 粒度、对象池颜色恢复和普通物件反馈。
+`F644706ED6036E00AA616388FE68CF93608230755B12043020CE182CA42A8E80`
 
-## 数据流
+SoflanSupport Release DLL SHA-256：
 
-1. `Manager.NotesReader.loadNote` 调用原版解析后，读取当前 `MA2Record` 的尾字段并写入扩展字段 `NoteData.isMine`。
-2. `Manager.NotesReader.loadMa2Main` 完成原版 `calcEach` 后，移除 Mine 与普通 Each 的关联，并清理 Mine 的 `parent/indexEach/eachChild`，避免 Mine 改写其他普通物件的 Each 关系。
-3. 各类物件在 `Initialize` 后绑定运行时状态和 `(GameScoreList, noteIndex)`，对象池复用时重新写入状态并恢复旧颜色。
-4. `Manager.GameScoreList.SetResult` 作为统一正式结算边界，查询 Mine 索引并执行结果映射，再调用原版统计逻辑。
+`0E8A4A58EF8E3082136AD77AA9B85B936B1552FDDD5E4676B28D5C51650C2022`
 
-## Patch 分层
+MineVisuals SHA-256：
 
-### 输入与状态
+`5911535D18F88DA5CDF15C178B37E670C44FDEBC5AB2C22830574AC20EF9F857`
 
-- `Manager.NoteData.Mine.mm.cs`：增加 `isMine`，并在 `clear()` 中显式重置。
-- `Manager.NotesReader.Mine.mm.cs`：识别 `!m`、传播标记、清理 Each 关系。
-- `MineRuntime.cs`：维护运行时 Mine 状态、分数索引、AutoPlay 临时避让、反馈抑制深度和结果映射。
+## 已实现行为
 
-### 视觉
+### MA2 输入
 
-- `MineVisual.cs`：保存每个 `SpriteRenderer` 的原始颜色，应用灰色 RGB tint，保留 alpha，并在对象池复用/结束时恢复。
-- Tap/Star、NoteBase、Hold/BreakHold、Break、Touch、SlideRoot/SlideFan、BreakStar 的 `Initialize/Execute` 均经过该后端；Slide 动态生成的箭头也通过子 SpriteRenderer 覆盖。
+- 在 MA2 Note 记录唯一的最终扩展字段中，以大小写敏感的 `str.Contains("!m")` 判断 Mine；大写 `!M` 不视为 Mine。
+- 命中后临时移除该字段中的全部精确 `!m`，其余内容和顺序原样保留；因此 `#1!m!y`、`!y!m#1`、重复 `!m` 和未知私有修饰都可继续交给各自读取器。
+- MineSupport 不再验证 `#groupFspeed` 或其他私有修饰的内部语法；错误字段位置和非 Note 记录仍拒绝，Soflan token 的合法性由 SoflanSupport 的正则解析器独立负责。
+- 拒绝范围限于当前谱面/难度；Release 与 Debug 都写 Error，不让整个进程因格式错误崩溃。
+- Error 至少包含谱面路径、1-based MA2 记录序号、记录类型、原始尾字段和具体原因。
 
-### 判定与反馈
+### 判定与计分
 
-- `Manager.GameScoreList.Mine.mm.cs`：统一执行正式结果反转。
-- `Monitor.NoteBase.Mine.mm.cs` 及 Hold/BreakHold/Break/Touch/Slide 派生 patch：包装 `NoteCheck`，Mine 时临时将 `GameManager.AutoPlay` 设为 `None`，保持普通判定窗口和自然超时。
-- `JudgeGrade`、`TouchEffect`、`SlideJudge`：在反馈抑制期间直接跳过 Mine 的显示和特效。
-- 专用入口额外覆盖：Break/Hold/BreakHold 闪烁、BreakNote 判定音、TouchHold 循环音、Slide 路径命中音、BreakStar 滑动 Break 特效。
+- Mine 沿用基础物件原生判定窗口，不新增碰撞状态机。
+- 原始 `TooFast`/`TooLate` 映射为最终 `Critical`；其他原始结果映射为最终 `TooLate`。
+- 最终结果继续进入基础 Tap/Hold/Slide/Break/Touch 的分值、Combo、Life、FC/AP、Ghost 和上传结构。
+- 只转换 Live、强制超时和正常收尾上下文；Ghost、目标成绩生成和无上下文 `SetResult` 直通，避免二次反转。
+- Track Skip 仍由原版在转换后强制为 `TooLate`，且不批量播放反馈。
+- P1/P2 使用独立 `GameScoreList`、运行时绑定、输入、音量与反馈去重状态。
 
-### 日志
+### AutoPlay 与反馈
 
-- `PatchLog.mm.cs` 会被 MonoMod 作为 `MineSupport.PatchLog` 注入目标程序集。
-- 日志文件名为 `dpMineSupport.log`，采用后台队列写盘；当前 `WriteLine` 为 Debug 条件调用，Release 不产生 Mine 调试日志。
-- Debug 下会记录 Mine 运行时绑定和正式结果映射，便于定位谱面标记传播或结算索引问题。
+- Mine 的 `NoteCheck` 期间只让 `GameManager.IsAutoPlay()` 返回 `false`，不修改全局 `GameManager.AutoPlay`。
+- 实体按键、触摸和经输入层注入的 DJAuto 仍会进入原生判定并可触雷。
+- 原始 Critical/Perfect/Great/Good、Fast/Late、Break/EX、Touch、Hold Loop 和 Slide 命中反馈均被抑制。
+- 只有实时输入导致的最终 `TooLate` 才播放一次原生 MISS 视觉和 `SE_GAME_TOUCH_HOLD_MISS`；未触碰成功、Ghost、Track Skip 和成绩生成静默。
+- JudgeGrade/SlideJudge 继续使用各 monitor 已配置的原生显示选项；音量按最终基础计分类别读取玩家设置。
 
-## 验证记录
+### Slide、Each 与 Touch Group
 
-### 编译
+- Star 头和 Slide 本体按各自 MA2 记录独立标记、独立结果。
+- `*` 同头多分支互相独立。
+- ConnectSlide 的全部嵌套内部段必须与所属本体共享 Mine 状态；整条连接链仍只使用原生本体结果槽。
+- 孤立 Mine ConnectSlide 或连接链混合状态会拒绝谱面。
+- `calcEach` 前临时移除 Mine，调用原版重新构建剩余普通节点的 Each/Touch Group，再按原索引放回 Mine；Mine 自身的 Each/Touch 链字段清空。
+- Mine 尾字段在进入原版和 Soflan hook 前只临时移除精确 `!m`，返回后完整恢复；SoflanSupport 从剩余混合字段中用正则提取 `#groupFspeed`，速度、出现时间和判定窗口保持正交。
 
-- `dotnet build .\Assembly-CSharp.MineSupport.mm.csproj --configuration Debug`：通过，0 警告，0 错误。
-- `dotnet build .\Assembly-CSharp.MineSupport.mm.csproj --configuration Release`：通过，0 警告，0 错误。
+### 视觉与资源
 
-### 离线 MonoMod 合并
+- 随 patch 部署 Unity 2018.4.7f1、StandaloneWindows64 AssetBundle，版本 `mine-visual-v1`。
+- shader 使用 Rec.709 亮度，输出区间 0.58-1.0，并叠加静态斜线纹理和内部高对比轮廓；不使用闪烁。
+- 每个运行时物件只在最派生 `Initialize` 完成后扫描一次子 `SpriteRenderer`，缓存原 `sharedMaterial`、颜色/alpha、enabled 和 EX 覆盖层 active 状态；Mine 期间同时禁止 Slide Break 动态闪烁。
+- 每帧只遍历缓存数组重新施加材质，不做层级扫描或委托分配；结束、对象池复用和新一局边界幂等恢复。
+- AssetBundle 缺失、版本不匹配、Material/Shader 缺失或 shader 不支持时，只拒绝含 Mine 的谱面；普通谱面不触发资源门禁。
+- 资源 Error 包含搜索/实际路径、patch 版本、期望资源版本、失败阶段和异常类型，使用一次性 key 防止逐物件刷屏。
 
-使用 BepInEx 同版本 `MonoMod.dll`、`Mono.Cecil.dll` 和隔离的目标程序集副本运行 `D:\sdez165_soflan_support_tools\Patcher\bin\Release\Patcher.exe`，结果通过：
+### 生命周期与日志
 
-- 输出包含 `MonoMod.WasHere`。
-- 输出包含 `MineSupport.MineRuntime`、`MineSupport.MineVisual`、`MineSupport.PatchLog`。
-- `Manager.NoteData` 包含 `isMine`，且 `clear()` 会重置该字段。
-- `NotesReader.loadNote/loadMa2Main` 包含 Mine 标记传播和 Each 清理调用。
-- `GameScoreList.SetResult` 包含 Mine 查找和结果映射调用。
-- 输出没有残留 `patch_*` 类型，也没有 `MonoMod` 运行时程序集引用。
-- Break/Hold/BreakHold/TouchHold/Slide 的专用反馈抑制入口均已在合并输出中确认存在。
+- `GamePlayManager.Initialize` 在新局和 Quick Retry 共用入口先清空运行时绑定、分数索引、视觉快照和反馈去重状态，再由各 `GameScoreList.Initialize` 重建 Mine 索引。
+- 谱面格式、资源或 Slide 链加载失败也执行相同幂等清理。
+- `dpMineSupport.log` 使用后台队列、UTF-8 without BOM；每行包含 UTC ISO-8601 时间、线程 ID 和 INFO/ERROR 级别。
+- `WriteLine` 仍仅在 Debug 编译存在；`Error`/`ErrorOnce` 在 Release 中无条件写文件并尝试转发 `UnityEngine.Debug.LogError`。
 
-## 尚未完成的验证
+## 主要代码边界
 
-- 需要在实际 BepInEx 游戏环境加载 `.mm.dll`，用包含普通 Tap、Break/EX、Hold、Touch/TouchHold、Star、Slide/FanSlide/ConnectSlide 和 `!m` 组合的 MA2 谱面回归。
-- 需要确认实际对象池、资源层级和游戏版本对 `GetComponentsInChildren<SpriteRenderer>(true)` 的覆盖是否完整。
-- 需要确认实机中 AutoPlay 超时、DJAuto 手动触发、Combo/成绩上传和 Mine 灰色 tint 的最终表现。
+- `MineTailParser.cs`：大小写敏感的 `Contains("!m")` 判定与非 Mine 修饰保留。
+- `MineChartLoader.cs`：谱面预检、错误元数据与连接 Slide 一致性。
+- `Manager.NotesReader.Mine.mm.cs`：尾字段净化、Soflan 兼容、Each/Touch 重建与资源门禁。
+- `MinePolicyCore.cs`、`MineRuntime.cs`：结果来源、每玩家绑定、AutoPlay、反馈调度与生命周期。
+- `Manager.GameScoreList.Mine.mm.cs`：统一正式结果转换边界。
+- `Manager.GameManager.Mine.mm.cs`：上下文感知的 AutoPlay 查询。
+- `Manager.GamePlayManager.Mine.mm.cs`：新局/重试瞬态清理。
+- `MineVisual.cs`：AssetBundle 验证、视觉缓存与对象池恢复。
+- `Monitor.*.Mine.mm.cs`：各物件族判定、反馈和视觉接入。
+- `PatchLog.mm.cs`：Release 可用的异步 Error 日志。
 
-上述项目是实机验证项，不代表当前 patch 编译或离线合并失败。
+## 离线验证证据
+
+以下验证均在 2026-07-24 重新执行：
+
+- CoreTests：PASS。覆盖 Contains 判定、混合 `!m`/`!y`/Soflan 排列、重复 Mine、大小写、Live/Forced/Natural 与 Ghost/Generated 来源策略和结果二值反转。
+- ChartTests：PASS。覆盖字段位置、错误原因、三段嵌套连接 Slide 的全链一致性，并验证生成的 661 Note 全 Mine 谱。
+- SoflanMarkerTests：PASS。覆盖 `#1!m!y`、`!y!m#1`、FixedSoflan、无 marker、重复 marker、非法 group 和非法 fixed speed。
+- SoflanLogTests（Release）：PASS。实际写出带 `[ERROR]` 的 UTF-8 无 BOM `dpSoflanSupport.log`。
+- LogTests（Release）：PASS。实际写出带 UTC/线程/ERROR 的 UTF-8 无 BOM 日志。
+- AssetBundle 构建：PASS。Unity 2018.4.7f1 构建后重新打开资源，校验版本 TextAsset、Material 和 Shader。
+- Debug 构建：PASS，0 warning，0 error。
+- Release 构建：PASS，0 warning，0 error。
+- 四 patch 离线合并：PASS。使用目标 BepInEx MonoMod，按真实顺序合并 Assets/Dp/Mine/Soflan。
+- IL 校验：PASS。确认 Mine `String.Contains/Replace`、Soflan `Regex.Matches`、Mine 净化期间的 NotesReader/Soflan hook、上下文 AutoPlay、SetResult/FinishPlay、生命周期清理、资源缓存、EX 覆盖恢复、Slide Break 闪烁抑制与热点 NoteCheck 无 Action/Func 分配。
+- 合并输出：`D:\temp\MineSupport.Validation\Assembly-CSharp.dll`，SHA-256 `29F5C617447650BCBDA32932F9D4F4205CA138834C1258C4FEFF591E91C6FD13`。
+- 合并输出仍保留一个 Cecil 未清理的、未使用的 `MonoMod` AssemblyRef；没有 Mine 类型或方法引用 MonoMod。目标 BepInEx core 本身也提供对应程序集，验证器对此只记录说明，不虚报为“完全无引用”。
+
+全量测试谱由 `tools/MineSupport.ChartGenerator` 使用目标 `MA2Record` 生成：
+
+- 文件：`tests/charts/mine_full_111960_02.ma2`
+- Note 数：661
+- 类型数：19，包含 `BRHLD`、Break/EX、Touch/TouchHold、Star、Wifi 与 `CNS*` ConnectSlide。
+
+## 未执行的实机验收
+
+用户明确要求助手不得自行启动游戏。`mai2.ini` 已恢复为测试前文件，当前值与备份的 SHA-256 均为 `D58119AFFAC1527F39F321EE38CE14E0268BBA632646FABD1DB8E7F138718F58`，且没有 `Sinmai`、`amdaemon` 或 `inject` 进程。因此以下项目保留为用户执行项：
+
+- 普通谱面零回归与全物件 Mine 灰阶/纹理显示。
+- AutoPlay 避雷、实体输入/DJAuto 触雷及单次 MISS 视觉/声音。
+- Slide 头/本体、同头分支和连接链实机表现。
+- Track Skip、Ghost、Quick Retry、正常收尾。
+- 1P/2P 独立结果和用户显示/音量设置。
+- 多皮肤与对象池反复复用后的材质、颜色、alpha、enabled 恢复。
+- 无效 Mine 与资源缺失的游戏内加载失败 UI/日志。
+- 密集谱暖机后的 GC 分配、层级扫描和帧耗时普通基线对照。
+
+在上述矩阵由用户完成并保留日志/截图/性能数据前，项目状态应写作“已部署，离线验证通过，实机待验”，不能写作“完整完成”。

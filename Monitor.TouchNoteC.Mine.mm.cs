@@ -11,7 +11,8 @@ namespace Monitor
         public void Initialize(NoteData note)
         {
             orig_Initialize(note);
-            MineRuntime.ApplyVisual(this, MineRuntime.IsMine(this));
+            if (GetType() == typeof(TouchNoteC))
+                MineRuntime.ApplyVisual(this, MineRuntime.IsMine(this), ExObj);
         }
     }
 }

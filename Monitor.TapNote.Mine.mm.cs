@@ -11,7 +11,7 @@ namespace Monitor
         public void Initialize(NoteData note)
         {
             orig_Initialize(note);
-            MineRuntime.ApplyVisual(this, MineRuntime.IsMine(this));
+            MineRuntime.ApplyVisual(this, MineRuntime.IsMine(this), ExObj);
         }
 
         public extern void orig_Execute();

@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mine 机制设计访谈记录</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas: #f4f6f5;
+      --paper: #ffffff;
+      --ink: #1e2724;
+      --muted: #65706c;
+      --line: #d8dfdc;
+      --strong-line: #aebbb6;
+      --accent: #176b55;
+      --accent-soft: #e7f2ed;
+      --warning: #985d13;
+      --warning-soft: #fff3dd;
+      --code: #eef1f0;
+      --pending: #5a4a91;
+      --pending-soft: #efecf8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      letter-spacing: 0;
+    }
+
+    body {
+      margin: 0;
+      min-width: 280px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--strong-line);
+      background: var(--paper);
+    }
+
+    .masthead {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 42px 0 34px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin-top: 0;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      margin-bottom: 12px;
+      font-size: clamp(2rem, 5vw, 3.25rem);
+      font-weight: 720;
+    }
+
+    h2 {
+      margin-bottom: 16px;
+      font-size: 1.35rem;
+    }
+
+    h3 {
+      margin-bottom: 8px;
+      font-size: 1rem;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    .subtitle {
+      max-width: 780px;
+      margin-bottom: 22px;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 24px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .meta div {
+      display: flex;
+      gap: 7px;
+    }
+
+    .meta dt {
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .meta dd {
+      margin: 0;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+      gap: 48px;
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 34px 0 64px;
+    }
+
+    nav {
+      position: sticky;
+      top: 24px;
+      align-self: start;
+      border-left: 3px solid var(--line);
+      padding-left: 18px;
+    }
+
+    nav strong {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 0.82rem;
+    }
+
+    nav a {
+      display: block;
+      padding: 5px 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+      text-decoration: none;
+    }
+
+    nav a:hover,
+    nav a:focus-visible {
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    main {
+      min-width: 0;
+    }
+
+    section {
+      scroll-margin-top: 24px;
+      padding: 30px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    section:first-child {
+      padding-top: 0;
+    }
+
+    section:last-child {
+      border-bottom: 0;
+    }
+
+    .status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 3px 9px;
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .status.pending {
+      color: var(--pending);
+      background: var(--pending-soft);
+    }
+
+    .status.known {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .status.risk {
+      color: var(--warning);
+      background: var(--warning-soft);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px 32px;
+    }
+
+    .summary-item {
+      padding-top: 12px;
+      border-top: 2px solid var(--line);
+    }
+
+    .summary-item p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .callout {
+      margin: 18px 0;
+      padding: 16px 18px;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .callout.warning {
+      border-left-color: var(--warning);
+      background: var(--warning-soft);
+    }
+
+    .callout p:last-child {
+      margin-bottom: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 4px;
+      font-size: 0.9rem;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    tbody tr:last-child td {
+      border-bottom-color: var(--strong-line);
+    }
+
+    code {
+      padding: 0.12em 0.34em;
+      border-radius: 3px;
+      background: var(--code);
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 0.88em;
+      overflow-wrap: anywhere;
+    }
+
+    ul,
+    ol {
+      margin: 10px 0 14px;
+      padding-left: 1.35rem;
+    }
+
+    li + li {
+      margin-top: 7px;
+    }
+
+    .question {
+      border-top: 4px solid var(--pending);
+      padding-top: 22px;
+    }
+
+    .question-number {
+      margin-bottom: 6px;
+      color: var(--pending);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .question-text {
+      max-width: 820px;
+      margin-bottom: 20px;
+      font-size: 1.24rem;
+      font-weight: 650;
+      line-height: 1.48;
+    }
+
+    .option-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .option {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 16px;
+      background: var(--paper);
+    }
+
+    .option.recommended {
+      border-color: var(--accent);
+      box-shadow: inset 0 3px 0 var(--accent);
+    }
+
+    .option p:last-child {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .decision-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .decision-list li {
+      display: grid;
+      grid-template-columns: 8rem minmax(0, 1fr);
+      gap: 16px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .decision-list li:last-child {
+      border-bottom: 0;
+    }
+
+    .decision-list strong {
+      font-size: 0.86rem;
+    }
+
+    .decision-list span {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    footer {
+      border-top: 1px solid var(--strong-line);
+      background: var(--paper);
+    }
+
+    footer p {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 20px 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    @media (max-width: 780px) {
+      .masthead,
+      .layout,
+      footer p {
+        width: min(100% - 28px, 680px);
+      }
+
+      .masthead {
+        padding: 30px 0 26px;
+      }
+
+      .layout {
+        display: block;
+        padding-top: 22px;
+      }
+
+      nav {
+        position: static;
+        margin-bottom: 28px;
+      }
+
+      .summary-grid,
+      .option-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .decision-list li {
+        grid-template-columns: 1fr;
+        gap: 3px;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+
+    @media print {
+      html,
+      header,
+      footer {
+        background: #fff;
+      }
+
+      nav {
+        display: none;
+      }
+
+      .layout {
+        display: block;
+        width: 100%;
+        padding: 20px 0;
+      }
+
+      .masthead,
+      footer p {
+        width: 100%;
+      }
+
+      section {
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="masthead">
+      <p class="eyebrow">SDEZ 1.65 / Design Interview</p>
+      <h1>Mine 机制设计访谈记录</h1>
+      <p class="subtitle">用于收敛游戏内 Mine 物件的产品语义、数据契约、判定、计分、表现和兼容边界。代码可以回答的事实直接记录；只有必须由产品意图决定的分支才进入访谈。</p>
+      <dl class="meta">
+        <div><dt>状态</dt><dd>设计已冻结；Q012/Q013 读取兼容性修订已实现并部署，实机待用户验收</dd></div>
+        <div><dt>当前问题</dt><dd>产品访谈已完成 / Q001-Q026；剩余为用户实机矩阵</dd></div>
+        <div><dt>最后更新</dt><dd><time datetime="2026-07-24T03:26:31+08:00">2026-07-24 03:26:31 +08:00</time></dd></div>
+        <div><dt>记录位置</dt><dd><code>docs/Mine_Design_Interview.html</code></dd></div>
+      </dl>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav aria-label="文档目录">
+      <strong>内容索引</strong>
+      <a href="#scope">范围与现状</a>
+      <a href="#facts">代码事实</a>
+      <a href="#question-001">已决问题 Q001</a>
+      <a href="#question-002">已决问题 Q002</a>
+      <a href="#question-003">已决问题 Q003</a>
+      <a href="#question-004">已决问题 Q004</a>
+      <a href="#question-005">已决问题 Q005</a>
+      <a href="#question-006">已决问题 Q006</a>
+      <a href="#question-007">已决问题 Q007</a>
+      <a href="#question-008">已决问题 Q008</a>
+      <a href="#question-009">已决问题 Q009</a>
+      <a href="#question-010">已决问题 Q010</a>
+      <a href="#question-011">已决问题 Q011</a>
+      <a href="#question-012">已决问题 Q012</a>
+      <a href="#question-013">已决问题 Q013</a>
+      <a href="#question-014">已决问题 Q014</a>
+      <a href="#question-015">已决问题 Q015</a>
+      <a href="#question-016">已决问题 Q016</a>
+      <a href="#question-017">已决问题 Q017</a>
+      <a href="#question-018">已决问题 Q018</a>
+      <a href="#question-019">已决问题 Q019</a>
+      <a href="#question-020">已决问题 Q020</a>
+      <a href="#question-021">已决问题 Q021</a>
+      <a href="#question-022">已决问题 Q022</a>
+      <a href="#question-023">已决问题 Q023</a>
+      <a href="#question-024">已决问题 Q024</a>
+      <a href="#question-025">已决问题 Q025</a>
+      <a href="#question-026">已决问题 Q026</a>
+      <a href="#implementation-status">实现与证据状态</a>
+      <a href="#decisions">决策登记</a>
+      <a href="#queue">后续分支</a>
+      <a href="#sources">参考来源</a>
+    </nav>
+
+    <main>
+      <section id="scope">
+        <div class="status-row">
+          <span class="status known">Q001-Q026 已全部确认</span>
+          <span class="status known">BepInEx / MonoMod.Loader 环境已确认</span>
+          <span class="status known">离线实现、校验与部署完成</span>
+          <span class="status risk">实机回归由用户执行</span>
+        </div>
+        <h2>范围与现状</h2>
+        <p>目标是在 <code>D:\sdez_165</code> 对应的游戏程序集上，通过当前仓库的 MonoMod patch 实现 Mine。输入侧参考 MajdataEdit 和 MajSimaiX，运行语义与视觉侧参考 MajdataView，但最终行为必须适配游戏原生的 <code>NoteData</code>、Monitor 生命周期和 <code>GameScoreList</code>。</p>
+        <div class="callout warning">
+          <p><strong>验收边界。</strong> Q001-Q026 已全部转化为实现和离线验证项；代码、资源、部署与离线证据已经完成。用户明确要求助手不得自行启动游戏，因此 Q026 的实机矩阵和性能对照必须由用户运行并提供证据，当前不能标记为完整验收。</p>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <h3>当前 patch</h3>
+            <p>已实现 Contains 型 Mine 尾字段识别、混合修饰兼容、Slide/Each/Touch 规范化、每玩家结果上下文、AutoPlay 避雷、实时 MISS 调度、生命周期清理和 AssetBundle 灰阶视觉。</p>
+          </div>
+          <div class="summary-item">
+            <h3>参考实现</h3>
+            <p>MajdataView 将 Mine 作为普通物件的修饰状态，保留原判定窗口；最终普通 Miss 变为成功，任意非 Miss 变为失败。</p>
+          </div>
+          <div class="summary-item">
+            <h3>输入契约</h3>
+            <p>MajdataEdit 以精确小写 <code>!m</code> 写入 MA2 尾字段，可与 <code>#groupFspeed</code> 共存，不引入新 MA2 记录 ID。</p>
+          </div>
+          <div class="summary-item">
+            <h3>剩余验证</h3>
+            <p>产品与离线技术分支均已闭合。剩余仅为真实游戏中的全类型、多人、Ghost/Track Skip/Quick Retry、对象池、反馈和帧耗时证据。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="facts">
+        <h2>已由代码确定的事实</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>主题</th>
+              <th>结论</th>
+              <th>设计影响</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>游戏判定域</td>
+              <td><code>NoteJudge.ETiming</code> 共有 15 个有效结果；<code>TooFast</code> 与 <code>TooLate</code> 是两个 Miss 端点。</td>
+              <td>若采用结果反转，成功可映射为 <code>Critical</code>，失败映射为 <code>TooLate</code>。</td>
+            </tr>
+            <tr>
+              <td>统一结算入口</td>
+              <td>Tap、Hold、Touch、Slide 等最终都调用 <code>GameScoreList.SetResult(index, kind, timing)</code>。</td>
+              <td>结果反转可以集中实现，不必复制所有计分逻辑。</td>
+            </tr>
+            <tr>
+              <td>长物件语义</td>
+              <td>Hold/TouchHold 根据头判定、保持时长和最终状态合成一个普通结果；Slide/Wifi 根据路径完成度与结束时间生成普通结果。</td>
+              <td>“发生过接触”和“最终不是 Miss”并不严格等价。</td>
+            </tr>
+            <tr>
+              <td>Slide 数据粒度</td>
+              <td>MajSimaiX 区分 <code>IsMine</code>（星头）与 <code>IsMineSlide</code>（轨迹）；MA2 分别落在 STR 头记录与轨迹记录。</td>
+              <td>游戏侧需决定星头和轨迹是否保持可独立标记、独立结算。</td>
+            </tr>
+            <tr>
+              <td>Each</td>
+              <td>MajdataView 会把 Mine 排除出普通 Each 表现；当前 patch 也会在 <code>calcEach</code> 后清理 Mine 关系。</td>
+              <td>这是现有一致行为，但仍需在后续确认是否是正式产品规则。</td>
+            </tr>
+            <tr>
+              <td>成绩链路</td>
+              <td>游戏从逐物件 <code>JudgeResultSt</code> 同时派生分数、DX Score、Combo、Miss、FC/AP、Life 和最终上传结果，没有独立 Mine 结果桶。</td>
+              <td>让 Mine 进入正式成绩可直接复用原链路；中立化则必须同步修改分母、理论 Combo、完成条件和上传兼容。</td>
+            </tr>
+            <tr>
+              <td>原版权重</td>
+              <td>Critical 时 Tap/Touch 为 500、Hold 为 1000、Slide 为 1500、Break 为 2500 加 100 奖励；DX Score 均为 3。</td>
+              <td>当前 patch 会自然沿用这些权重；若统一按 500 计，必须同时重算理论分母并移除 Mine Break 奖励。</td>
+            </tr>
+            <tr>
+              <td>组合修饰</td>
+              <td>MA2 的 Break/EX 记录可同时携带 <code>!m</code>；当前 patch 会保留基础计分类别，但用 Mine 灰色覆盖并抑制 Break/EX 的可见反馈。</td>
+              <td>需要明确“计分继承基础类型、表现由 Mine 主导”是否为正式优先级。</td>
+            </tr>
+            <tr>
+              <td>现有类型覆盖</td>
+              <td>参考实现与当前 patch 均已有 Tap/Star、Hold、Touch、TouchHold、Slide 和 Fan/Wifi 的解析、状态绑定、灰色覆盖及反馈抑制入口。</td>
+              <td>全类型支持无需新增另一套判定模型；主要剩余风险是逐类型实机回归。</td>
+            </tr>
+            <tr>
+              <td>连接 Slide 结果槽</td>
+              <td>目标游戏将内部 <code>ConnectSlide</code> 结果槽预置为 <code>End</code>，由首个可计分 Slide 对整条连接路径调用一次 <code>SetResult</code>。</td>
+              <td>若内部段独立结算，必须改写总数、理论分母和连接链生命周期；共享状态可直接沿用原生结构。</td>
+            </tr>
+            <tr>
+              <td>同头多 Slide</td>
+              <td>MajSimaiX 将 <code>*</code> 后的轨迹解析为独立无头 Slide；目标游戏把同时间同起点的多条 Slide 挂到一个星头下，但每条轨迹仍有独立结果槽。</td>
+              <td>共享星头不要求共享轨迹 Mine 状态，分支可分别标记和结算。</td>
+            </tr>
+            <tr>
+              <td>AutoPlay 判定</td>
+              <td>原版 AutoPlay 可生成 Critical、Perfect、Great、Good、Miss 或 Random；当前 patch 在 Mine 的 <code>NoteCheck</code> 内临时切为 <code>None</code>，阻止自动按下、保持、触点和滑动。</td>
+              <td>阻止后 Mine 会自然得到原始 <code>TooLate</code> 并反转成功；不阻止则结果取决于 AutoPlay 模式。</td>
+            </tr>
+            <tr>
+              <td>输入来源</td>
+              <td>目标代码没有独立 <code>DJAuto</code> 状态；外部工具若通过 <code>InputManager</code> 注入事件，与实体按键和触摸无法区分。当前 patch 只关闭内建 AutoPlay，仍读取这些输入。</td>
+              <td>保留输入会让手动/DJAuto 触雷；若要免疫，必须在 AutoPlay 避雷期间额外屏蔽全部 Mine 输入。</td>
+            </tr>
+            <tr>
+              <td>Ghost 存储契约</td>
+              <td><code>UserGhost.CreateGhostBitData</code> 直接保存正式 <code>JudgeResultSt.Timing</code> 的 4 bit 索引，回放数据已经包含 Mine 反转结果。</td>
+              <td>Ghost 写入、预载和实时回放必须绕过 Mine 转换，防止成功与失败发生二次反转。</td>
+            </tr>
+            <tr>
+              <td>Track Skip 顺序</td>
+              <td>原版 <code>SetResult</code> 在 <code>IsTrackSkip</code> 时强制把所有结果改为 <code>TooLate</code>；当前 patch 的转换发生在调用原版之前，因此最终仍是失败。</td>
+              <td>这是显式跳过的特殊规则；正常歌曲结束时的未触碰 Mine 仍按 Q001 反转成功。</td>
+            </tr>
+            <tr>
+              <td>非实时结果上下文</td>
+              <td>正常收尾给未判定物件补原始 <code>TooLate</code>；Quick Retry 不持久化结果；Ghost 与目标达成率分配保存或生成的是最终判定。</td>
+              <td>只有实时物件结果进入 Mine 转换；Ghost/目标成绩必须直通，Quick Retry 重建时清空 Mine 运行状态。</td>
+            </tr>
+            <tr>
+              <td>当前 Mine 尾字段识别</td>
+              <td>当前 patch 在 Note 的最终扩展字段中直接使用大小写敏感的 <code>str.Contains(&quot;!m&quot;)</code>；命中后临时移除全部精确 <code>!m</code>，其余修饰和顺序不变。</td>
+              <td>这是用户在 Q012 后追加的读取兼容性修订；Mine 不再解释 Soflan 或 <code>!y</code>，各补丁独立消费自己的 token。</td>
+            </tr>
+            <tr>
+              <td>无效 Mine 输入边界</td>
+              <td>规范化导出仍可限制重复和组合，但游戏端 Mine 读取器按用户修订接受重复 <code>!m</code> 与未知共存标记；错误位置、非 Note、连接 Slide 冲突和资源错误仍属于 Mine 拒绝边界。</td>
+              <td>非法 <code>#groupFspeed</code> 由 SoflanSupport 的正则解析器记录并抛出，避免 Mine 与 Soflan 重复解释同一语法。</td>
+            </tr>
+            <tr>
+              <td>错误日志能力</td>
+              <td>当前 <code>PatchLog.WriteLine</code> 带有 <code>[Conditional(&quot;DEBUG&quot;)]</code>，Release 会在调用点移除日志；现有后端可异步写入 <code>dpMineSupport.log</code> 并转发 Unity 日志。</td>
+              <td>无效 Mine 的拒绝日志必须使用不受 <code>DEBUG</code> 限制的 Error 入口，不能复用当前仅调试日志作为唯一诊断。</td>
+            </tr>
+            <tr>
+              <td>旧读取器边界</td>
+              <td><code>!m</code> 不创建新 MA2 Note ID；不了解扩展的读取器可能忽略尾字段，并把记录解释为普通基础物件。</td>
+              <td>当前 patch 无法改变未安装 patch 的外部读取器行为，只能明确兼容政策并在受控工具链中提示能力要求。</td>
+            </tr>
+            <tr>
+              <td>Each 清理风险</td>
+              <td>当前 <code>NormalizeEach</code> 先清空 Mine 自身的 <code>isEach/parent/eachChild</code>，再从其他节点的 <code>eachChild</code> 移除 Mine；当 Mine 原本是 Each 根节点时，普通子节点可能仍保留指向 Mine 的 <code>parent</code>。</td>
+              <td>正式实现必须双向修复或重建剩余 Each 图，不能只清理 Mine 节点本身；普通节点之间的合法 Each 关系应保持一致。</td>
+            </tr>
+            <tr>
+              <td>Touch Chain 语义</td>
+              <td>目标游戏的 <code>TouchChainList</code>/<code>TouchHoldChainList</code> 按成员数的约 51% 判断链成功，并把 <code>ChainJudge</code> 传给尚未判定的其他触点；<code>GameScoreList.SetResult</code> 还会为每个 Touch 成员更新链状态。</td>
+              <td>Mine 若留在原生链中，就不再是单物件独立判定：Mine 的反转结果可能改变普通 Touch 的后续结算，反之亦然。</td>
+            </tr>
+            <tr>
+              <td>Soflan 速度机制</td>
+              <td>目标游戏的移动、出现时间和判定窗口由基础物件的 HS/SV/Soflan 路径计算；当前 Mine patch 只绑定 Mine 状态、视觉和结算，没有改写速度或时间字段。</td>
+              <td>Mine 与合法 <code>#groupFspeed</code>/FixedSoflan 的组合可以保持正交；解析顺序不应改变运动或判定时间。</td>
+            </tr>
+            <tr>
+              <td>当前视觉后端</td>
+              <td><code>MineVisual</code> 把所有子 <code>SpriteRenderer.color</code> 的 RGB 设为 <code>(0.68, 0.68, 0.68)</code> 并保留 Alpha；等通道乘色只会压暗纹理，不会消除纹理原有色相。</td>
+              <td>当前实现不能可靠产生参考设计的灰白 Mine，尤其在红、黄、蓝等高饱和皮肤上仍会显色。</td>
+            </tr>
+            <tr>
+              <td>参考视觉资源</td>
+              <td>MajdataView 的 <code>MineSpriteEffect</code> shader 使用 Rec.709 亮度并映射到 <code>0.58..1.0</code> 灰阶，保留纹理轮廓与透明度；目标 MonoMod 项目当前不携带 shader/material 或 AssetBundle。</td>
+              <td>若采用真正灰白效果，部署产物必须增加与 patch 同版本的资源包和明确的装载/恢复生命周期。</td>
+            </tr>
+            <tr>
+              <td>对象池恢复</td>
+              <td>当前 <code>MineVisual</code> 只缓存 Renderer 的原始 <code>Color</code>，没有保存 <code>sharedMaterial</code> 或其他渲染状态；缓存还以 Renderer 强引用为键。</td>
+              <td>方案 A 必须对 Apply/Clear 做幂等快照与完整恢复，在结束、对象回池、Quick Retry 和异常清理时释放缓存，保证普通物件不继承 Mine 材质。</td>
+            </tr>
+            <tr>
+              <td>当前结果反馈</td>
+              <td>候选 patch 会在 Mine 的结束路径抑制 JudgeGrade、Fast/Late、普通判定音、Break/EX、Touch 与 Slide 成功特效，但没有创建 Mine 专用成功或失败反馈。</td>
+              <td>玩家触雷后主要只能从 Combo/Life/成绩变化察觉原因；若要即时因果反馈，需要新增独立于普通判定表现的 Mine 失败特效。</td>
+            </tr>
+            <tr>
+              <td>MISS 特效调用顺序</td>
+              <td>各物件原生 EndNote/Slide 结束路径会先用物件的原始判定初始化 <code>JudgeGrade</code>/<code>SlideJudge</code>，随后才调用 <code>GameScoreList.SetResult</code> 完成 Mine 结果反转。</td>
+              <td>Q020 不能通过简单恢复原特效实现；必须继续抑制原始 Critical/Perfect 等效果，再对实时触雷按最终 <code>TooLate</code> 主动播放一次对应物件族的原生 MISS 视觉。</td>
+            </tr>
+            <tr>
+              <td>反馈去重</td>
+              <td>同一运行时物件可能经过基类和派生类包装，Slide 连接链也包含多个内部段；直接在多个 EndNote/SetResult hook 中播放会重复触发 MISS 视觉或声音。</td>
+              <td>正式实现需要按逻辑结果索引和实时上下文集中调度 Q020/Q021，保证头/本体独立、连接链整链一次、非实时路径零次。</td>
+            </tr>
+            <tr>
+              <td>皮肤与对象池策略</td>
+              <td>原生 <code>Initialize</code> 先选取当前皮肤 Sprite/Material，Mine wrapper 随后应用效果；Hold 状态和动态 Slide 箭头可能在运行期间改变或新增 Renderer。</td>
+              <td>每次激活先清除旧快照，再捕获当前皮肤状态；运行期间覆盖动态 Renderer，回池/重试/异常时完整恢复，因而无需维护 Mine 专用皮肤表。</td>
+            </tr>
+            <tr>
+              <td>统计与上传结构</td>
+              <td><code>NoteScore.EScoreType</code> 只有 Tap、Hold、Slide、Break、Touch、BreakBonus；<code>UserPlaylog</code> 也只上传这五类的 Critical/Perfect/Great/Good/Miss，没有 Mine 字段。</td>
+              <td>按基础类型归档可直接保持现有结果 UI 与服务器契约；新增官方 Mine 桶需要同步改结果界面、存档、上传 VO 和服务器协议。</td>
+            </tr>
+            <tr>
+              <td>判定显示设置</td>
+              <td>每位玩家已有 <code>DispJudge</code>、<code>DispJudgePos</code> 和 <code>DispJudgeTouchPos</code>；<code>JudgeGrade.Initialize</code> 在显示位置为 Off 时会直接返回。</td>
+              <td>通过原生入口播放 Q020 的 MISS 会自然遵循玩家设置；强制显示需要主动绕过现有偏好。</td>
+            </tr>
+            <tr>
+              <td>多玩家数据模型</td>
+              <td>目标游戏最多维护四个按 monitor 索引区分的 <code>GameScoreList</code>，并通过 <code>NotesManager.Instance(monitorIndex)</code> 提供各自 NoteData；Ghost 使用独立玩家槽与最终结果。</td>
+              <td>Mine 可按 <code>(GameScoreList/monitor, noteIndex)</code> 隔离，随后继续服从 Utage/Party 原有的 Chain、Combo 与排名聚合。</td>
+            </tr>
+            <tr>
+              <td>当前全局状态风险</td>
+              <td>候选 patch 的 <code>RunNoteCheck</code> 会临时改写静态 <code>GameManager.AutoPlay</code>，反馈抑制使用进程级 <code>feedbackSuppressionDepth</code>；二者都没有 monitor 或结果来源维度。</td>
+              <td>正式实现应使用按运行时物件、monitor 和来源作用域的上下文，并直接跳过 Mine 自动判定入口，避免一个玩家的 Mine 短暂影响另一玩家。</td>
+            </tr>
+            <tr>
+              <td>生命周期清理缺口</td>
+              <td>当前 <code>ResetScore</code> 只移除 <code>MineScoreIndices</code>；运行时物件字典、视觉快照和反馈去重状态依赖各对象正常走到 Release，异常/重试路径没有统一清理入口。</td>
+              <td>谱面初始化、Quick Retry、重载、加载失败和游戏退出都必须幂等清空瞬态状态，同时保留可复用且已验证的只读资源缓存。</td>
+            </tr>
+            <tr>
+              <td>当前性能热点</td>
+              <td>多个物件的 <code>Execute</code> 每帧调用 <code>MineVisual.Apply</code>，后者每次执行 <code>GetComponentsInChildren&lt;SpriteRenderer&gt;(true)</code> 并创建 Renderer 数组。</td>
+              <td>正式实现不能在稳定游戏帧重复扫描层级或产生托管分配；Renderer 快照应在初始化/动态创建点增量维护，非 Mine 路径保持近零开销。</td>
+            </tr>
+            <tr>
+              <td>验证状态</td>
+              <td>当前 patch 有 Debug/Release 编译与离线 MonoMod 合并记录，没有完整实机谱面回归证据。</td>
+              <td>最终方案必须附带实机验证矩阵，不能把“能合并”视为“行为正确”。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="question-001">
+        <p class="question-number">Q001 · 已确认 A · 根决策</p>
+        <h2>Mine 的失败条件究竟由什么定义？</h2>
+        <p class="question-text">是沿用 MajdataView，把物件的“最终普通判定”二值反转；还是实现更严格的碰撞语义，只要在危险窗口内发生过任何有效按键、触摸、保持或滑动接触，就立即视为 Mine 失败？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：反转最终普通判定（推荐）</h3>
+            <p>普通结果为 <code>TooFast</code>/<code>TooLate</code> 时 Mine 成功并记为 <code>Critical</code>；其余结果 Mine 失败并记为 <code>TooLate</code>。这与 MajdataView 一致，可复用每类物件成熟的判定窗口，并把转换集中在结算入口。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：任意有效接触即失败</h3>
+            <p>独立记录按钮、触区、Hold 按压过程、Slide/Wifi 路径命中等触发状态。语义更像真正的地雷，但必须逐类定义危险窗口、跨帧去重、擦边和连接 Slide 传播，复杂度与回归范围明显增加。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Mine 沿用基础物件的原生判定窗口与生命周期；原始 <code>TooFast</code>/<code>TooLate</code> 映射为成功 <code>Critical</code>，其他原始结果映射为失败 <code>TooLate</code>。不新增独立接触检测状态机。</p>
+        </div>
+      </section>
+
+      <section id="question-002">
+        <p class="question-number">Q002 · 已确认 A · 成绩模型</p>
+        <h2>Mine 的反转结果是否进入游戏正式成绩链？</h2>
+        <p class="question-text">成功避开 Mine 与触发 Mine，是否应像普通 Critical/Miss 一样影响分数、DX Score、Combo、FC/AP、Life、达成率和最终上传结果？本问只决定是否进入正式成绩，具体沿用哪种物件权重将在下一问处理。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：进入正式成绩（推荐）</h3>
+            <p>成功 Mine 作为 <code>Critical</code> 增加 Combo 并取得对应分值；失败 Mine 作为 <code>TooLate</code> 丢分、断 Combo，并参与 Miss、FC/AP、Life 与上传结果。它继续占用原 MA2 物件的结果槽。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：成绩中立</h3>
+            <p>Mine 只提供玩法与视觉反馈，不影响原版成绩、Combo、Life 或称号。需要把它从原版分母和理论 Combo 中剔除，并新增独立完成计数，否则成绩与谱面总数会不一致。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Mine 的反转结果进入正式成绩链，影响分数、DX Score、Combo、FC/AP、Life、达成率和最终上传结果。</p>
+        </div>
+      </section>
+
+      <section id="question-003">
+        <p class="question-number">Q003 · 已确认 A · 计分权重</p>
+        <h2>Mine 应沿用基础物件权重，还是统一为固定权重？</h2>
+        <p class="question-text">在成功 Mine 统一记录为 <code>Critical</code> 的前提下，Hold、Slide、Break Mine 的正式分值和理论分母，是保留其原 MA2 类型，还是全部按一个 Tap 级 Mine 计算？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：沿用基础物件权重（推荐）</h3>
+            <p>Tap/Touch Mine 为 500、Hold Mine 为 1000、Slide Mine 为 1500、Break Mine 为 2500 加 100 奖励，DX Critical 均为 3。Mine 只反转判定，不改变原记录的计分类别。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：统一 Mine 固定权重</h3>
+            <p>对齐 MajdataView，所有 Mine 均按 500、DX Critical 3 计算，并屏蔽 Break 奖励。需要为 Mine 重算理论总分、分类统计与成绩分母，不能只修改 <code>SetResult</code> 的类型。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Mine 保留原 MA2 基础物件的计分类别与理论权重；Tap/Touch、Hold、Slide、Break 分别沿用原版权重，Break Mine 也保留 Break 奖励。</p>
+        </div>
+      </section>
+
+      <section id="question-004">
+        <p class="question-number">Q004 · 已确认 A · 修饰优先级</p>
+        <h2>Mine 与 Break/EX 组合时，玩家可见表现由谁主导？</h2>
+        <p class="question-text">同一记录同时带有 <code>!m</code> 和 Break/EX 类型时，是否保留 Q003 的基础计分权重，但让 Mine 覆盖其外观、音效、闪光、覆盖层与普通判定反馈？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：Mine 主导表现，基础类型负责计分（推荐）</h3>
+            <p>接受 Mine + Break/EX。物件按 Mine 的灰色危险样式显示并抑制 Break/EX 专属反馈；原 Break/EX 类型仍提供原生判定窗口及 Q003 已确认的计分权重。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：叠加 Break/EX 表现</h3>
+            <p>在 Mine 灰色基础上仍显示 Break 闪光、EX 覆盖层及相关音效。信息更完整，但会弱化 Mine 辨识度，也可能让触发失败看起来像普通成功命中。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：禁止组合</h3>
+            <p>遇到 Break/EX 记录上的 <code>!m</code> 时拒绝谱面或忽略 Mine。规则最单纯，但会主动放弃 MajSimaiX 和 MA2 尾标记已经能够表达的组合。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Mine 主导组合物件的外观、音效和特效，Break/EX 的玩家可见反馈被抑制；基础类型继续负责原生判定窗口和 Q003 已确认的计分权重。</p>
+        </div>
+      </section>
+
+      <section id="question-005">
+        <p class="question-number">Q005 · 已确认 A · 类型覆盖</p>
+        <h2>哪些标准物件族允许使用 Mine？</h2>
+        <p class="question-text">是否让所有可独立结算的标准物件都接受 <code>!m</code>，包括 Tap/Star、Hold、Touch、TouchHold，以及 Slide/Fan/Wifi 本体？Slide 的星头、轨迹和连接段粒度将在下一问单独确定。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：全部标准物件族（推荐）</h3>
+            <p>支持 Tap/Star、Hold、Touch、TouchHold、Slide 与 Fan/Wifi，并覆盖各自的 Break/EX 变体。每类继续产生原生最终判定，再按 Q001 统一反转。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：仅瞬时物件</h3>
+            <p>只支持 Tap/Star/Touch，拒绝或忽略 Hold、TouchHold 和 Slide/Fan/Wifi 上的 <code>!m</code>。规则较窄，但会割裂 MajSimaiX 已支持的 Mine 语法。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：指定白名单</h3>
+            <p>由你逐项指定允许的物件族。适合有明确玩法限制的情况，但编辑器、导出器、读取器和测试矩阵都需要维护同一份白名单。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Mine 支持全部可独立结算的标准物件族：Tap/Star、Hold、Touch、TouchHold、Slide 与 Fan/Wifi，并覆盖各自的 Break/EX 变体。</p>
+        </div>
+      </section>
+
+      <section id="question-006">
+        <p class="question-number">Q006 · 已确认 A · Slide 粒度</p>
+        <h2>Slide/Fan/Wifi 的星头和轨迹 Mine 标记是否独立？</h2>
+        <p class="question-text">谱面能否分别表达“仅星头是 Mine”“仅轨迹是 Mine”和“星头、轨迹都是 Mine”，并让头与轨迹继续占用各自原生结果槽独立结算？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：头与轨迹完全独立（推荐）</h3>
+            <p>STR 星头只读取 <code>IsMine</code>，Slide/Fan/Wifi 轨迹只读取 <code>IsMineSlide</code>。两者都标记时产生两个独立反转结果；无头 Slide 只能标记和结算轨迹。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：头与轨迹强制联动</h3>
+            <p>任一侧出现 Mine 标记就传播到另一侧，星头和轨迹同时成为 Mine，并仍各自结算。规则更整体，但无法表达 MajSimaiX 已支持的仅头或仅轨迹 Mine。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Slide/Fan/Wifi 的星头与轨迹 Mine 标记完全独立；仅头、仅轨迹和两者同时为 Mine 均有效，两者同时标记时占用各自原生结果槽独立结算。</p>
+        </div>
+      </section>
+
+      <section id="question-007">
+        <p class="question-number">Q007 · 已确认 A · 连接 Slide</p>
+        <h2>连接 Slide 的多个内部轨迹段是否共享一个 Mine 本体？</h2>
+        <p class="question-text">一条连接 Slide 在 MA2 中拆成首段和若干 <code>ConnectSlide</code> 记录后，是否把整条轨迹视为一个 Mine 状态，所有段统一显示，并只在原生首段结果槽结算一次？混合尾标记如何校验将在后续输入规则中确定。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：整条连接链共享，单次结算（推荐）</h3>
+            <p>所有内部段共享一个 <code>IsMineSlide</code> 语义和 Mine 外观；连接段仅参与路径判定，不生成额外成绩，整条链最终只反转一次 Slide 结果。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：各段独立 Mine</h3>
+            <p>每个 MA2 轨迹记录可独立标记和结算 Mine。需要解除内部段的 <code>End</code> 结果、增加理论总数，并为每段定义局部判定窗口，改变原生连接 Slide 玩法。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 一条连接 Slide 的所有内部轨迹段共享一个 Mine 本体状态和统一外观；内部 <code>ConnectSlide</code> 不产生额外成绩，整条链只反转一次原生 Slide 结果。</p>
+        </div>
+      </section>
+
+      <section id="question-008">
+        <p class="question-number">Q008 · 已确认 A · 同头多 Slide</p>
+        <h2>同一星头下的多条 Slide 轨迹是否分别拥有 Mine 状态？</h2>
+        <p class="question-text">使用 <code>*</code> 形成同头多 Slide 时，是否允许一条轨迹为 Mine、另一条保持普通，并让每条轨迹按自己的 <code>IsMineSlide</code> 独立显示和结算？共享星头本身继续由 Q006 的 <code>IsMine</code> 单独控制。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：各轨迹分支独立（推荐）</h3>
+            <p>每条同头轨迹分别读取自己的 Mine 标记和原生结果槽。Mine 与普通轨迹可以共享一个星头；多条轨迹都为 Mine 时，各自产生一次反转结果。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：同头轨迹强制联动</h3>
+            <p>任一轨迹标记 Mine，就把同一星头下所有轨迹都设为 Mine。整体视觉更统一，但无法表达 MajSimaiX 当前支持的分支级 Mine。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 同一星头下的各条 Slide 轨迹分别拥有 Mine 状态和结果槽，Mine 与普通轨迹可以并存；共享星头本身继续由独立的 <code>IsMine</code> 控制。</p>
+        </div>
+      </section>
+
+      <section id="question-009">
+        <p class="question-number">Q009 · 已确认 A · AutoPlay</p>
+        <h2>普通 AutoPlay 是否应自动避开所有 Mine？</h2>
+        <p class="question-text">启用任何 AutoPlay 判定模式时，Mine 是否跳过自动按下、自动保持、自动触点和自动滑动，等待原生窗口自然超时并按 Q001 反转为成功？普通物件仍照常使用所选 AutoPlay 判定。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：AutoPlay 主动避雷（推荐）</h3>
+            <p>Mine 在判定期间临时禁用 AutoPlay，所有类型自然超时为原始 Miss，再记录为成功 Critical；普通物件不受影响。这代表自动演奏采用最优 Mine 策略。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：照常生成原始自动判定</h3>
+            <p>Mine 也执行 <code>AutoJudge</code> 后再反转：Critical/Perfect/Great/Good 模式会触雷失败，Miss 模式成功，Random 模式随机成败。更适合判定调试，但不再是最优自动演奏。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 内建 AutoPlay 主动避开所有 Mine，不自动按下、保持、触摸或滑动；Mine 按原生窗口自然超时并反转为成功，普通物件仍使用所选 AutoPlay 判定。</p>
+        </div>
+      </section>
+
+      <section id="question-010">
+        <p class="question-number">Q010 · 已确认 A · 输入边界</p>
+        <h2>AutoPlay 避雷期间，真实输入是否仍可触发 Mine？</h2>
+        <p class="question-text">内建 AutoPlay 被 Mine 临时抑制时，是否继续读取实体按键、触摸和经 <code>InputManager</code> 注入的 DJAuto 事件，并在它们命中 Mine 时按 Q001 判为失败？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：真实输入仍可触雷（推荐）</h3>
+            <p>只屏蔽内建自动判定，不屏蔽输入系统。玩家或 DJAuto 实际命中 Mine 时照常生成原始非 Miss，并反转为失败；没有输入时 AutoPlay 才会成功避开。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：AutoPlay 下 Mine 完全免疫</h3>
+            <p>AutoPlay 启用期间忽略 Mine 的全部输入，保证其始终成功。需要额外屏蔽 <code>InputManager</code> 事件；未设置 AutoPlay 标志的外部 DJAuto 仍无法被可靠识别。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> AutoPlay 只屏蔽内建自动判定；实体输入、触摸及经 <code>InputManager</code> 注入的 DJAuto 事件仍可命中 Mine，并按 Q001 反转为失败。</p>
+        </div>
+      </section>
+
+      <section id="question-011">
+        <p class="question-number">Q011 · 已确认 A · Track Skip</p>
+        <h2>显式 Track Skip 后，剩余 Mine 应记为失败还是成功？</h2>
+        <p class="question-text">玩家主动跳过歌曲剩余部分时，尚未结算的 Mine 是否与其他剩余物件一样强制记为 <code>TooLate</code> 失败，而不是因为“没有触碰”获得成功 Critical？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：Track Skip 强制失败（推荐）</h3>
+            <p>所有未结算 Mine 最终保持 <code>TooLate</code>，不取得剩余分数，并计入 Miss/Combo/Life 结果。正常播放至歌曲结束但没有触碰 Mine，仍按 Q001 成功。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：Track Skip 也视为成功避开</h3>
+            <p>剩余 Mine 在跳过时映射为 Critical 并取得分数。需要让 Mine 转换覆盖原版 Track Skip 的强制 Miss，可能出现主动跳过却增加成绩的结果。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 显式 Track Skip 后，所有未结算 Mine 强制保持 <code>TooLate</code> 失败，不取得剩余分数；正常播放至歌曲结束但未触碰 Mine 仍按 Q001 成功。</p>
+        </div>
+      </section>
+
+      <section id="question-012">
+        <p class="question-number">Q012 · 后续修订为 Contains 兼容读取 · MA2 输入</p>
+        <h2>MA2 的 Mine 尾标记采用严格语法还是宽松搜索？</h2>
+        <p class="question-text">读取器是否只在物件记录的修饰尾字段中识别一次精确小写 <code>!m</code>，并允许它与一个合法 <code>#groupFspeed</code> 块按任意先后顺序共存？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：结构化严格语法（推荐）</h3>
+            <p>接受 <code>!m</code>、<code>!m#12F600</code>、<code>#12F600!m</code> 等契约形式；只认精确小写标记和合法尾字段，不在其他列或任意字符串中搜索子串。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：维持宽松搜索</h3>
+            <p>扫描所有字段，只要压缩空白后类似包含或结尾为 <code>!m</code> 就视为 Mine。兼容随意写法，但可能把未知扩展、注释或损坏字段误判为 Mine。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户后续修订（覆盖原方案 A 的读取严格度）：</strong>游戏端在 Note 最终扩展字段中直接用大小写敏感的 <code>str.Contains(&quot;!m&quot;)</code> 判断 Mine，并移除全部精确 <code>!m</code> 后把其余内容原样交给其他补丁；因此 <code>#1!m!y</code>、<code>!y!m#1</code> 与重复 <code>!m</code> 都按 Mine 读取。规范化导出规则不因此改变。</p>
+        </div>
+      </section>
+
+      <section id="question-013">
+        <p class="question-number">Q013 · 保留结构错误日志，尾修饰语法改由各消费者负责 · 错误边界</p>
+        <h2>遇到结构无效的 Mine 数据时，读取器应如何处理？</h2>
+        <p class="question-text">用户后续修订后，重复 <code>!m</code>、未知私有标记和混合排列不再由 Mine 判为错误；Mine 仍拒绝错误字段位置、非 Note 标记和连接 Slide 链状态冲突，SoflanSupport 独立拒绝无效或重复的 <code>#groupFspeed</code>。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：拒绝受影响谱面并精确报错（推荐）</h3>
+            <p>停止加载当前谱面或难度并返回失败，但不让整个进程崩溃；日志包含 MA2 记录序号、记录类型、原始尾字段和具体原因，要求作者修正数据后再加载。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：警告后降级为普通物件</h3>
+            <p>丢弃无效 Mine 修饰并继续加载基础物件。可用性较高，但会把本应危险的物件静默变成普通物件，使谱面行为和作者意图不一致。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：尽力自动修复</h3>
+            <p>自动去重、重排尾块或把连接链统一成某一段的状态。能容忍部分旧数据，但修复方向存在歧义，且编辑器、预览器和游戏可能各自得到不同结果。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论保留，并按后续修订缩小适用范围：</strong>Mine 结构错误仍拒绝当前谱面或难度，Debug/Release 均写可定位 Error；尾字段中其他 token 的语法由对应补丁负责，Mine 不因 <code>!y</code>、重复 <code>!m</code> 或 Soflan 内容本身拒绝。</p>
+        </div>
+      </section>
+
+      <section id="question-014">
+        <p class="question-number">Q014 · 已确认 A · 兼容政策</p>
+        <h2>不了解 <code>!m</code> 的旧 MA2 读取器，应被视为受支持环境吗？</h2>
+        <p class="question-text">由于 Mine 沿用基础 Note ID，旧读取器可能忽略私有尾字段并把 Mine 当成普通物件；当前游戏 patch 无法替未安装 patch 的外部读取器阻止这种行为。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：明确要求 Mine-aware 读取器（推荐）</h3>
+            <p>把含 <code>!m</code> 的谱面定义为 Majdata 扩展内容，只有明确支持该扩展的游戏、编辑器和预览器才属于受支持环境。旧读取器降级为普通物件属于不受支持行为，文档、导出提示和兼容测试都应明确这一点。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：正式支持降级为普通物件</h3>
+            <p>允许旧读取器忽略 <code>!m</code>，并把普通物件播放视为预期兼容结果。谱面通常仍能打开，但玩法、成绩、Combo 和生存结果都会与 Mine-aware 环境不同。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：引入强制拒绝旧读取器的格式门槛</h3>
+            <p>增加新记录类型、版本头或其他破坏兼容的标记，让旧工具更可能直接拒绝谱面。这会改变 Q012 已确定的“不新增 MA2 Note ID”契约，并扩大编辑器、预览器和导出器改造范围。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 含 <code>!m</code> 的谱面要求 Mine-aware 读取器；旧读取器把 Mine 当普通物件属于不受支持行为。保留现有私有尾字段契约，不新增 MA2 Note ID 或强制格式门槛。</p>
+        </div>
+      </section>
+
+      <section id="question-015">
+        <p class="question-number">Q015 · 已确认 A · Each 关系</p>
+        <h2>Mine 是否参与普通 Each/EachLine 关系？</h2>
+        <p class="question-text">这里先只决定普通同时按下物件的 Each 连接和引导线；Touch/TouchHold 的触点组归属另列为下一问。若同一时刻有 Mine 与普通物件，是否让 Mine 保持独立，同时让剩余普通物件继续组成合法 Each？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：Mine 排除出 Each（推荐）</h3>
+            <p>Mine 不设置 <code>isEach</code>、<code>parent</code>、<code>eachChild</code> 或 <code>indexEach</code>，不显示普通 EachLine；同一时刻的普通物件在移除 Mine 后仍按原规则互相组成 Each。若剩余普通物件不足以成组，则不显示引导线。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：Mine 参与普通 Each</h3>
+            <p>保留原生 Each 图和引导线，让 Mine 与普通物件看起来属于同一组，但每个 Mine 仍按 Q001 独立反转结果。视觉关系更完整，却容易暗示 Mine 与普通物件共享成功条件。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：Mine 使用独立 Each 组</h3>
+            <p>不与普通物件连线，但把同时出现的多个 Mine 组成专用 Mine 引导线或组状态。需要新增表现、对象生命周期和输入语义，目前参考实现没有这种概念。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Mine 排除出普通 Each/EachLine；移除 Mine 后，剩余普通物件继续按原规则组成 Each。实现必须双向修复或重建剩余 Each 图，避免普通节点留下指向 Mine 的悬挂关系。</p>
+        </div>
+      </section>
+
+      <section id="question-016">
+        <p class="question-number">Q016 · 已确认 A · Touch Group</p>
+        <h2>Mine Touch/TouchHold 是否参与原生触点组？</h2>
+        <p class="question-text">目标游戏的 TouchChain/TouchHoldChain 会按组内成员比例判定，并将链结果推送给尚未结算的成员。若同一触点组混有 Mine 与普通 Touch，是否让 Mine 影响普通成员的链式结果？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：Mine 排除出触点组（推荐）</h3>
+            <p>Mine Touch/TouchHold 保持 <code>indexTouchGroup = -1</code>，不进入 <code>TouchChainList</code> 或 <code>TouchHoldChainList</code>，独立走 Q001 判定和正式结算；过滤 Mine 后，剩余普通触点重新组成原生链。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：Mine 参与原生触点组</h3>
+            <p>保留 Mine 在原生链中的成员资格，让 51% 阈值和 <code>ChainJudge</code> 作用于所有成员。这样一次链式结果可能同时结算 Mine 与普通触点，Mine 的反转顺序必须额外定义。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：建立独立 Mine 触点组</h3>
+            <p>普通触点链完全不受 Mine 影响，同时为同组 Mine 另建专用链。需要重新定义 Mine 链的阈值、输入传播、TouchHold 保持过程和统计粒度，超出当前原生模型。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Mine Touch/TouchHold 不加入原生触点链，独立走 Q001 判定和正式结算；过滤 Mine 后，普通触点重建各自的原生 Touch/TouchHold 链。</p>
+        </div>
+      </section>
+
+      <section id="question-017">
+        <p class="question-number">Q017 · 已确认 A · Soflan 优先级</p>
+        <h2>Mine 与 Soflan/HS/SV、FixedSoflan 同时出现时，谁控制时间机制？</h2>
+        <p class="question-text">Q012 已确定 <code>!m</code> 可以和一个合法 <code>#groupFspeed</code> 块共存；现在只决定运行时优先级：速度修饰是否继续控制物件的移动、出现时间和原生判定窗口？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：速度修饰与 Mine 正交（推荐）</h3>
+            <p>完整保留基础物件的 Soflan/HS/SV/FixedSoflan 运动和时间轴，Mine 只负责灰白表现、输入避让和 Q001 结果反转。<code>!m#12</code>、<code>#12!m</code> 等等价尾字段必须得到相同的时间行为。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：Mine 覆盖速度修饰</h3>
+            <p>Mine 使用固定的默认速度或专用危险速度，忽略记录中的 Soflan/FixedSoflan。视觉和判定更容易统一，但会改变作者为该物件设置的出现节奏与判定窗口。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：禁止速度修饰与 Mine 组合</h3>
+            <p>遇到 Mine 与 <code>#groupFspeed</code> 共存时拒绝谱面或忽略 Mine。实现边界简单，但会否定 Q012 已确认的组合语法并割裂编辑器与游戏行为。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Soflan/HS/SV/FixedSoflan 完整控制基础物件的移动、出现时间和原生判定窗口；Mine 只负责表现、输入避让与结果反转，等价尾字段不得产生时序差异。</p>
+        </div>
+      </section>
+
+      <section id="question-018">
+        <p class="question-number">Q018 · 已确认 A · 视觉后端</p>
+        <h2>Mine 的灰白外观采用哪种渲染方案？</h2>
+        <p class="question-text">当前等通道 tint 不能真正去色。是否随 patch 部署专用 shader/material 资源，对所有 Mine Sprite 做亮度灰阶映射，并在对象复用时恢复原材质与颜色？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：专用灰阶 shader/material（推荐）</h3>
+            <p>随 patch 提供配套 AssetBundle，采用参考实现的 Rec.709 亮度与 <code>0.58..1.0</code> 灰阶映射；覆盖 Tap/Star、Hold、Touch/TouchHold、Slide/Fan/Wifi 的全部子 Sprite，并保存、恢复每个 Renderer 原材质、颜色和 Alpha。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：保留代码内简单 tint</h3>
+            <p>不增加资源包，继续把 Renderer 颜色乘以统一灰值。部署最简单，但彩色纹理仍保留色相，无法保证 Mine 在不同皮肤上有一致灰白辨识度。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：为每类物件维护 Mine Sprite</h3>
+            <p>提供独立的 Mine Tap、Hold、Touch、Slide 等纹理并逐类替换。可完全控制造型，但需要覆盖所有皮肤、Break/EX、动态 Slide Bar 和后续皮肤变体，维护面最大。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 随 patch 部署专用灰阶 shader/material AssetBundle，采用 Rec.709 亮度映射；复用基础皮肤轮廓和动画，并在物件结束或回池时完整恢复原材质、颜色、Alpha 与缓存状态。</p>
+        </div>
+      </section>
+
+      <section id="question-019">
+        <p class="question-number">Q019 · 已确认 A · 资源失败</p>
+        <h2>Mine 视觉资源不可用时，含 Mine 的谱面是否继续播放？</h2>
+        <p class="question-text">不可用包括 AssetBundle 缺失或版本不匹配、目标 Material 不存在、shader 加载失败/不受支持。该错误可以在谱面进入游戏前验证，且不需要影响不含 Mine 的普通谱面。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：仅拒绝含 Mine 的谱面（推荐）</h3>
+            <p>Mine 资源验证失败时不开始当前谱面或难度，干净返回加载失败；普通谱面继续可用。Debug/Release 都写一次 Error 日志，包含资源路径、patch/资源版本、失败阶段和异常信息，避免逐物件刷屏。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：降级为简单 tint 后继续</h3>
+            <p>记录 Warning，并回退到当前的等通道乘色。谱面仍可游玩，但不同皮肤可能保留明显色相，Mine 与普通物件的辨识不再可靠。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：保留普通外观，仅运行 Mine 逻辑</h3>
+            <p>不应用任何专用视觉，仍执行 Mine 判定与计分。危险物件看起来与普通物件相同，属于不可见玩法差异，最容易造成误判。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> AssetBundle、材质、shader 或版本验证失败时，只拒绝含 Mine 的当前谱面/难度；普通谱面继续可用。Debug/Release 均写一次包含资源路径、版本、失败阶段和异常信息的 Error 日志，不逐物件刷屏。</p>
+        </div>
+      </section>
+
+      <section id="question-020">
+        <p class="question-number">Q020 · 已确认 A（用户修正） · 结果反馈</p>
+        <h2>Mine 成功避开与实时触雷失败，应如何显示？</h2>
+        <p class="question-text">普通 Judge、Fast/Late、Break/EX、Touch 与 Slide 成功特效继续按 Q004 被抑制；这里仅决定是否添加 Mine 自己的结果反馈。音效在下一问单独决定。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：仅实时触雷显示原生 MISS（用户修正后采用）</h3>
+            <p>玩家或 DJAuto 的实时输入导致 Mine 最终失败时，按转换后的 <code>TooLate</code> 播放一次对应物件族的原生 MISS 视觉；成功避开时静默结束，不显示 Critical/Perfect 或 Fast/Late。Slide 头/本体按 Q006 各自一次，连接 Slide 本体按 Q007 整链一次；Track Skip、Ghost 和非实时成绩生成不批量播放。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：成功和失败都静默</h3>
+            <p>维持参考实现与当前 patch 的反馈抑制，不新增专用特效。画面最干净，但玩家触雷时只能从 Combo、Life 或成绩变化推断原因。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：复用普通判定特效</h3>
+            <p>成功显示 Critical/Perfect，失败显示 Miss，并恢复基础物件的判定动画。实现资源成本较低，但容易把“避开危险”表现成普通命中，并重新暴露 Q004 已抑制的 Break/EX 成功反馈。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A，并修正表现。</strong> 实时触雷显示游戏原生 MISS 视觉特效，未触雷成功则静默结束；原始非 Miss 特效必须被抑制，实际展示依据 Mine 转换后的最终 <code>TooLate</code>。Track Skip、Ghost 与其他非实时结算不播放反馈。</p>
+        </div>
+      </section>
+
+      <section id="question-021">
+        <p class="question-number">Q021 · 已确认 A · 音效</p>
+        <h2>实时触雷显示 MISS 时，应播放什么声音？</h2>
+        <p class="question-text">成功避开继续完全静默；这里仅决定玩家或 DJAuto 实时触雷失败的声音。Break/EX、TouchHold 循环音、Slide 触摸音等基础命中声音仍按 Q004 被抑制。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：同步原生 MISS 判定音（推荐）</h3>
+            <p>每个实时触雷逻辑结果播放一次游戏原生 MISS cue，与 Q020 的 MISS 视觉同步，并遵循玩家现有音效设置；不播放原始 Critical/Perfect、Break/EX、Hold Loop 或 Slide 命中音。Track Skip、Ghost 和成功避开不发声。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：使用专用 Mine 触雷音</h3>
+            <p>在 AssetBundle 或配套音频资源中加入独立爆炸/警报 cue。辨识度最高，但需要额外处理音频格式、混音、音量、并发限制和资源版本。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：触雷也保持静音</h3>
+            <p>只显示 Q020 的 MISS 视觉，不产生任何 Mine 相关声音。对安静游玩最友好，但快速谱面中视觉可能被其他物件遮挡。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 每个实时触雷逻辑结果同步播放一次对应物件族的原生 MISS 判定音，并遵循现有音效设置；成功避开、Track Skip、Ghost 和其他非实时路径保持静音，不恢复基础命中音。</p>
+        </div>
+      </section>
+
+      <section id="question-022">
+        <p class="question-number">Q022 · 已确认 A · 无障碍辨识</p>
+        <h2>Mine 是否需要灰阶之外的非颜色视觉线索？</h2>
+        <p class="question-text">灰阶效果在彩色皮肤上明显，但低饱和/黑白皮肤本身可能与 Mine 接近。是否在专用 shader 中增加不依赖色相的第二线索？</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：增加静态高对比轮廓/纹理（推荐）</h3>
+            <p>在灰阶基础上加入稳定的明暗边缘或斜纹，不闪烁、不依赖红绿差异，并覆盖 Tap/Star、Hold、Touch/TouchHold 与 Slide/Fan/Wifi 条体；保持基础轮廓仍可识别。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：只使用灰阶去色</h3>
+            <p>严格沿用参考视觉，不增加其他标记。画面最简洁，但在低饱和皮肤、低亮度显示器或复杂背景上，Mine 与普通物件可能不够容易区分。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：使用动态亮度脉冲</h3>
+            <p>让 Mine 周期性闪烁或呼吸，辨识度最高且适用于所有物件形状，但快速谱面中更干扰注意力，也需要考虑闪烁与动态敏感用户。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 在灰阶 shader 中增加静态高对比轮廓或纹理，覆盖所有标准物件族；不依赖色相、不闪烁，并保留基础物件轮廓的可识别性。</p>
+        </div>
+      </section>
+
+      <section id="question-023">
+        <p class="question-number">Q023 · 已确认 A · 统计归属</p>
+        <h2>是否增加独立的 Mine 成功/触雷统计？</h2>
+        <p class="question-text">Q002/Q003 已确定 Mine 的最终结果进入正式成绩并沿用基础物件权重；这里仅决定结果页、存档和上传是否还要出现独立 Mine 桶。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：不增加独立 Mine 统计（推荐）</h3>
+            <p>Mine 最终 Critical/Miss 继续计入其基础 Tap/Hold/Slide/Break/Touch 类别，沿用现有成绩、结果页、FC/AP、Ghost 和 <code>UserPlaylog</code>；运行时只保留必要的内部 Mine 标记与诊断日志，不显示独立成功率。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：增加仅本地 Mine 统计</h3>
+            <p>额外显示“避开数/触雷数/总数”，但不参与分数且不上报服务器。需要改本地结果 UI 和存档/重放展示，并明确该值与基础类型判定数重复计数。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：增加完整官方 Mine 桶</h3>
+            <p>扩展 NoteScore、结果 UI、存档、Ghost 和上传协议，让 Mine 成为第六类官方统计。信息最完整，但会破坏现有数据契约，并需要服务器端同步支持。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 不增加独立 Mine 统计；Mine 最终结果继续按基础 Tap/Hold/Slide/Break/Touch 类型进入成绩、结果页、FC/AP、Ghost 和上传协议，仅保留内部标记与诊断信息。</p>
+        </div>
+      </section>
+
+      <section id="question-024">
+        <p class="question-number">Q024 · 已确认 A · 用户设置</p>
+        <h2>触雷 MISS 视觉是否尊重玩家的原生判定显示设置？</h2>
+        <p class="question-text">Q022 的灰阶与静态轮廓属于物件身份，始终显示；这里仅决定触雷后的原生 MISS 结果文字/动画是否受 <code>DispJudge</code> 和位置设置控制。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：完全尊重现有判定显示设置（推荐）</h3>
+            <p>通过各物件族原生 MISS 入口播放，沿用每位玩家的判定样式和 Tap/Touch 显示位置；玩家关闭相关判定显示时不强制出现 MISS。Q021 的声音仍独立遵循现有音效设置。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：触雷 MISS 始终强制显示</h3>
+            <p>即使玩家关闭原生判定显示，也绕过 Off 检查显示 MISS。危险反馈最明确，但破坏玩家的判定显示偏好，并可能在简洁 UI 配置中突然出现结果文字。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：新增独立 Mine 反馈开关</h3>
+            <p>为触雷 MISS 增加单独的 On/Off 设置。控制最细，但需要扩展选项 UI、用户配置序列化、默认值和旧存档迁移。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 触雷 MISS 视觉完全遵循每位玩家的 <code>DispJudge</code> 与 Tap/Touch 显示位置；关闭判定显示时不强制出现。Mine 本体的灰阶和静态高对比标记仍始终可见。</p>
+        </div>
+      </section>
+
+      <section id="question-025">
+        <p class="question-number">Q025 · 已确认 A · 多玩家</p>
+        <h2>Mine 的判定与反馈是否按玩家完全隔离？</h2>
+        <p class="question-text">这里的“隔离”发生在游戏原有模式聚合之前：每个玩家先独立产生 Mine 最终结果，之后 Utage/Party 仍可按原规则计算共享 Chain、强制 Combo 或排名。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：每位玩家独立（推荐）</h3>
+            <p>同一个谱面 Mine 可以由 P1 成功避开、P2 触雷失败；输入、AutoPlay 避让、分数、Life、MISS 视觉/音效和用户设置都按 monitor 隔离。Ghost 只提供自身最终成绩，不触发真人玩家反馈；原生多人聚合在这些最终结果之后照常运行。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：本地双人共享 Mine 结果</h3>
+            <p>一名本地玩家触雷或避开后，另一名玩家同索引 Mine 使用相同结果。需要跨 monitor 同步判定与去重，并会让未输入的玩家被动得分或失败。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：Party 全员共享 Mine 结果</h3>
+            <p>将 Mine 变成房间级共同危险，任一成员触雷影响所有人。需要新增网络消息、时序一致性、掉线与重连规则，目标协议当前没有该语义。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> 每位玩家独立产生 Mine 输入、判定、成绩、Life 与反馈，再交给 Utage/Party 原有规则聚合；Ghost 使用自身最终结果且不触发真人反馈。实现不得通过全局 AutoPlay 或反馈状态跨 monitor 污染。</p>
+        </div>
+      </section>
+
+      <section id="question-026">
+        <p class="question-number">Q026 · 已确认 A · 最终验收</p>
+        <h2>达到什么验证深度，Mine 才能标记为“实现完成”？</h2>
+        <p class="question-text">当前第一版已能编译和离线合并，但已发现严格解析、Ghost 二次反转、连接 Slide、Touch Group、全局状态、视觉资源与性能等实质缺口。</p>
+
+        <div class="option-grid">
+          <article class="option recommended">
+            <h3>方案 A：完整证据链（推荐）</h3>
+            <p>要求 Debug/Release 零错误构建、严格 MA2/结果上下文自动化测试、资源版本与失败测试、MonoMod 离线合并及 IL 核查，并完成实机矩阵：普通谱面零回归、全物件族与组合、Slide 粒度、手动/AutoPlay/DJAuto、Ghost、Track Skip、Quick Retry、1P/2P、皮肤/对象池、MISS 反馈和错误日志。密集谱面还需确认暖机后无 Mine 每帧分配或层级扫描，并与普通基线比较帧耗时。</p>
+          </article>
+          <article class="option">
+            <h3>方案 B：自动化与离线合并即可</h3>
+            <p>完成构建、单元测试、资源检查和 MonoMod 合并后即标记完成，实机全类型/双人/性能仅列为后续验证。速度较快，但 Unity 对象层级、音效、显示设置和对象池问题无法由离线测试证明。</p>
+          </article>
+          <article class="option">
+            <h3>方案 C：编译加单次实机冒烟</h3>
+            <p>只要求 Release 构建和一张简单 Tap Mine 谱面可运行。无法覆盖本轮已识别的跨类型、Ghost、连接链、资源失败和多人风险。</p>
+          </article>
+        </div>
+
+        <div class="callout">
+          <p><strong>用户结论：方案 A。</strong> Mine 只有在完整构建、自动化、资源失败测试、MonoMod 合并/IL 核查、全类型实机矩阵和性能对照形成证据链后才能标记完成。本轮 Q001-Q026 产品设计至此冻结。</p>
+        </div>
+      </section>
+
+      <section id="implementation-status">
+        <h2>实现与证据状态</h2>
+        <div class="status-row">
+          <span class="status known">Core / Chart / Log 测试通过</span>
+          <span class="status known">Unity 2018 AssetBundle 通过</span>
+          <span class="status known">四 patch 合并与 IL 校验通过</span>
+          <span class="status known">目标环境已部署</span>
+          <span class="status risk">实机与性能待用户执行</span>
+        </div>
+        <table>
+          <thead>
+            <tr><th>证据层</th><th>当前结果</th><th>覆盖内容</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>构建</td><td>PASS</td><td>Debug/Release 均为 0 warning、0 error。</td></tr>
+            <tr><td>自动化</td><td>PASS</td><td>Contains 型 Mine、正则 Soflan、混合 <code>!m</code>/<code>!y</code>/<code>#groupFspeed</code> 排列、结果来源、结构错误定位、三段嵌套连接 Slide 全链、661 条全类型 Mine 谱，以及 Mine/Soflan 两端的 Release UTF-8 Error 日志。</td></tr>
+            <tr><td>视觉资源</td><td>PASS</td><td>Unity 2018.4.7f1 构建后重开并验证版本 TextAsset、Material 与 shader。</td></tr>
+            <tr><td>MonoMod</td><td>PASS</td><td>按 Assets、Dp、Mine、Soflan 实际顺序离线合并；验证解析/Soflan、AutoPlay、SetResult、清理、资源缓存、EX 覆盖恢复、Slide Break 闪烁抑制及热点分配边界。</td></tr>
+            <tr><td>部署</td><td>完成</td><td>新版 <code>Assembly-CSharp.MineSupport.mm.dll</code>、<code>Assembly-CSharp.SoflanSupport.mm.dll</code> 与 <code>MineSupport/MineVisuals</code> 已部署并核对 SHA-256，旧版使用非加载后缀备份。</td></tr>
+            <tr><td>实机</td><td>未执行</td><td>用户禁止助手自行启动游戏；配置已恢复，当前没有目标游戏进程。</td></tr>
+          </tbody>
+        </table>
+        <div class="callout warning">
+          <p><strong>状态口径：</strong>当前只能写“已部署，离线验证通过，实机待验”。详细命令、哈希、架构和待验矩阵见 <code>docs/Mine_Implementation_Plan.md</code>。</p>
+        </div>
+      </section>
+
+      <section id="decisions">
+        <h2>决策登记</h2>
+        <ul class="decision-list">
+          <li><strong>Q001 核心语义</strong><span>已确认方案 A：反转最终普通判定，不实现独立碰撞检测。</span></li>
+          <li><strong>Q002 成绩归属</strong><span>已确认方案 A：反转结果进入正式成绩、Combo、Life 与上传链。</span></li>
+          <li><strong>Q003 计分权重</strong><span>已确认方案 A：沿用基础物件类型、理论分母和计分权重。</span></li>
+          <li><strong>Q004 修饰优先级</strong><span>已确认方案 A：Mine 主导表现、基础类型负责判定窗口与计分。</span></li>
+          <li><strong>Q005 类型覆盖</strong><span>已确认方案 A：支持全部标准物件族及其 Break/EX 变体。</span></li>
+          <li><strong>Q006 Slide 头/轨迹</strong><span>已确认方案 A：两个 Mine 标记和结果槽完全独立。</span></li>
+          <li><strong>Q007 连接 Slide</strong><span>已确认方案 A：整条连接链共享 Mine 本体并单次结算。</span></li>
+          <li><strong>Q008 同头多 Slide</strong><span>已确认方案 A：各轨迹分支的 Mine 状态与结果独立。</span></li>
+          <li><strong>Q009 AutoPlay</strong><span>已确认方案 A：内建 AutoPlay 主动避开所有 Mine。</span></li>
+          <li><strong>Q010 真实输入</strong><span>已确认方案 A：AutoPlay/DJAuto 下的真实输入仍可触雷。</span></li>
+          <li><strong>代码结论 Ghost</strong><span>Ghost 保存最终判定；所有 Ghost 路径必须绕过 Mine 再转换。</span></li>
+          <li><strong>Q011 Track Skip</strong><span>已确认方案 A：显式跳过时剩余 Mine 强制失败。</span></li>
+          <li><strong>代码结论收尾</strong><span>正常超时按 Q001；Quick Retry 不持久化；最终成绩生成路径绕过二次转换。</span></li>
+          <li><strong>Q012 MA2 语法</strong><span>后续修订：游戏端以大小写敏感的 <code>Contains(&quot;!m&quot;)</code> 宽松读取并只移除 Mine token，其他修饰由对应补丁独立解析。</span></li>
+          <li><strong>Q013 无效输入</strong><span>结构错误仍拒绝并写日志；重复 <code>!m</code>、<code>!y</code> 共存和混合排列不再属于 Mine 语法错误。</span></li>
+          <li><strong>Q014 旧读取器</strong><span>已确认方案 A：含 <code>!m</code> 的谱面要求 Mine-aware 读取器，旧读取器降级不属于受支持行为。</span></li>
+          <li><strong>Q015 Each 关系</strong><span>已确认方案 A：Mine 不进入普通 Each/EachLine；剩余普通节点的关系必须双向修复。</span></li>
+          <li><strong>Q016 Touch Group</strong><span>已确认方案 A：Mine Touch/TouchHold 不进入原生触点链，普通成员过滤后重建。</span></li>
+          <li><strong>Q017 Soflan 优先级</strong><span>已确认方案 A：速度修饰与 Mine 正交，完整保留基础时间机制。</span></li>
+          <li><strong>Q018 视觉后端</strong><span>已确认方案 A：随 patch 部署专用灰阶 shader/material，并完整恢复对象池渲染状态。</span></li>
+          <li><strong>Q019 资源失败</strong><span>已确认方案 A：只拒绝含 Mine 的谱面，普通谱面不受影响，并写一次可定位 Error 日志。</span></li>
+          <li><strong>Q020 结果反馈</strong><span>已确认方案 A（用户修正）：实时触雷显示原生 MISS 视觉，未触雷静默结束；非实时结算不播放。</span></li>
+          <li><strong>Q021 音效</strong><span>已确认方案 A：实时触雷同步原生 MISS 判定音，成功避开与非实时结算保持静音。</span></li>
+          <li><strong>Q022 非颜色辨识</strong><span>已确认方案 A：灰阶之外增加静态高对比轮廓或纹理，不使用闪烁。</span></li>
+          <li><strong>Q023 独立统计</strong><span>已确认方案 A：不增加 Mine 桶，继续按基础类型进入本地与上传统计。</span></li>
+          <li><strong>Q024 判定显示设置</strong><span>已确认方案 A：触雷 MISS 完全遵循每位玩家的原生判定显示偏好。</span></li>
+          <li><strong>Q025 多玩家隔离</strong><span>已确认方案 A：每位玩家独立判定 Mine，再交给原生多人规则聚合。</span></li>
+          <li><strong>Q026 完成验收</strong><span>已确认方案 A：要求完整自动化、合并核查、实机矩阵和性能证据链。</span></li>
+          <li><strong>代码事实</strong><span>Mine 是修饰状态，不需要新增 MA2 Note ID；游戏有统一结果入口。</span></li>
+          <li><strong>输入结论</strong><span>在 Note 最终扩展字段中以精确小写 <code>!m</code> 子串判定 Mine；移除 Mine token 后保留其他内容，Soflan 用正则从任意排列中提取完整 token。</span></li>
+          <li><strong>覆盖结论</strong><span>全类型支持；Slide 头/轨迹独立，连接链共享本体，同头多分支相互独立。</span></li>
+          <li><strong>表现结论</strong><span>专用灰阶材质；抑制原始命中特效；实时触雷按最终结果显示原生 MISS，成功避开静默。</span></li>
+        </ul>
+      </section>
+
+      <section id="queue">
+        <h2>后续决策树</h2>
+        <p>Q001-Q026 已闭合并冻结。后续不再扩展产品语义，按以下验收门执行：</p>
+        <ol>
+          <li>已完成 BepInEx <code>MonoMod.Loader</code> 路径确认、Contains 型 Mine/正则 Soflan 混合修饰读取、运行时上下文、判定/反馈、视觉资源、多玩家隔离和生命周期清理。</li>
+          <li>已完成自动化、Debug/Release 构建、AssetBundle、四 patch 离线合并/IL 核查与目标部署。</li>
+          <li>待用户执行实机全类型矩阵和性能对照，并保留日志、截图与测量结果。</li>
+        </ol>
+      </section>
+
+      <section id="sources">
+        <h2>参考来源</h2>
+        <ul>
+          <li><code>F:\MajdataView\docs\Mine功能与实现细节.md</code>：参考运行语义、类型覆盖、视觉与统计。</li>
+          <li><code>F:\MajdataEdit\docs\Mine_Implementation_Audit.md</code>：参考编辑器链路与 MA2 <code>!m</code> 契约。</li>
+          <li><code>D:\sdez_165\NoteJudge.cs</code>、<code>Manager\GameScoreList.cs</code>、<code>Monitor\*.cs</code>：目标游戏真实判定与结算路径。</li>
+          <li><code>D:\sdez165_mine_support\*.mm.cs</code>：当前候选 patch 和已有实现假设。</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    <p>活文档：每次用户答复后更新当前问题、决策登记、影响分析与最后更新时间；所有文本以 UTF-8 保存。</p>
+  </footer>
+</body>
+</html>

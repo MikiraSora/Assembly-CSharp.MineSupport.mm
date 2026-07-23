@@ -11,7 +11,7 @@ namespace Monitor
         public void Initialize(NoteData note)
         {
             orig_Initialize(note);
-            MineRuntime.ApplyVisual(this, MineRuntime.IsMine(this));
+            MineRuntime.ApplyVisual(this, MineRuntime.IsMine(this), ExObj);
         }
 
         public extern void orig_Execute();
@@ -27,15 +27,50 @@ namespace Monitor
 
         protected void NoteCheck()
         {
-            MineRuntime.RunNoteCheck(this, orig_NoteCheck);
+            var scope = MineRuntime.EnterNoteCheck(this);
+            try
+            {
+                orig_NoteCheck();
+            }
+            finally
+            {
+                MineRuntime.Exit(scope);
+            }
         }
 
         protected extern void orig_EndNote();
 
         protected void EndNote()
         {
-            MineRuntime.RunFeedbackSuppressed(this, orig_EndNote);
-            MineRuntime.ReleaseRuntime(this);
+            var scope = MineRuntime.EnterFeedback(this);
+            try
+            {
+                orig_EndNote();
+            }
+            finally
+            {
+                MineRuntime.Exit(scope);
+            }
+
+            try
+            {
+                if (MineRuntime.TryBeginLiveMiss(this))
+                {
+                    var feedbackScope = MineRuntime.EnterVisibleMineFeedback();
+                    try
+                    {
+                        JudgeGradeObject.Initialize(NoteJudge.ETiming.TooLate, JudgeTimingDiffMsec, NoteJudge.EJudgeType.HoldOut);
+                    }
+                    finally
+                    {
+                        MineRuntime.Exit(feedbackScope);
+                    }
+                }
+            }
+            finally
+            {
+                MineRuntime.ReleaseRuntime(this);
+            }
         }
 
         protected extern void orig_PlayJudgeSe();
@@ -77,7 +112,15 @@ namespace Monitor
 
         public void SetForcePlayResult(int monitorId, NoteData note, NoteJudge.ETiming timing)
         {
-            MineRuntime.RunFeedbackSuppressed(this, () => orig_SetForcePlayResult(monitorId, note, timing));
+            var scope = MineRuntime.EnterForcedTimeout(monitorId, note);
+            try
+            {
+                orig_SetForcePlayResult(monitorId, note, timing);
+            }
+            finally
+            {
+                MineRuntime.Exit(scope);
+            }
         }
     }
 }

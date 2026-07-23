@@ -1,0 +1,21 @@
+ManifestFileVersion: 0
+CRC: 3264214918
+Hashes:
+  AssetFileHash:
+    serializedVersion: 2
+    Hash: b30d5aad2265257605589b99fc65a26c
+  TypeTreeHash:
+    serializedVersion: 2
+    Hash: 47deccd23fa7c94314ccca972d821b09
+HashAppended: 0
+ClassTypes:
+- Class: 21
+  Script: {instanceID: 0}
+- Class: 48
+  Script: {instanceID: 0}
+- Class: 49
+  Script: {instanceID: 0}
+Assets:
+- Assets/MineSpriteMaterial.mat
+- Assets/MineSupportVersion.txt
+Dependencies: []

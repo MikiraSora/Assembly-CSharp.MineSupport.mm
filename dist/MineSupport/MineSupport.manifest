@@ -1,0 +1,7 @@
+ManifestFileVersion: 0
+CRC: 1688681589
+AssetBundleManifest:
+  AssetBundleInfos:
+    Info_0:
+      Name: minevisuals
+      Dependencies: {}
