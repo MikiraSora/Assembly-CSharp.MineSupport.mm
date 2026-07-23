@@ -17,6 +17,9 @@
     <!-- 测试、离线验证器和 Unity bundle 构建脚本是独立工程，不应注入游戏 patch。 -->
     <Compile Remove="tests\**;tools\**;assets\**;build\**" />
 
+    <!-- MonoMod 会把该嵌入资源复制到最终 Assembly-CSharp；运行时直接从内存加载。 -->
+    <EmbeddedResource Include="dist\MineSupport\minevisuals" LogicalName="MineSupport.MineVisuals" />
+
     <!-- 游戏目标程序集：只用于编译期类型解析，运行时由 BepInEx/MonoMod.Loader patch 原程序集。 -->
     <Reference Include="Assembly-CSharp">
       <HintPath>F:\SDEZ_165\Package\Sinmai_Data\Managed\Assembly-CSharp.dll</HintPath>

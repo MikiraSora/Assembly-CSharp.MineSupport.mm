@@ -8,8 +8,9 @@ namespace MineSupport
 {
     internal static class MineVisual
     {
-        private const string PatchVersion = "mine-support-v1";
+        private const string PatchVersion = "mine-support-v2";
         private const string BundleVersion = "mine-visual-v1";
+        private const string BundleResourceName = "MineSupport.MineVisuals";
         private const string MaterialAssetName = "MineSpriteMaterial";
         private const string VersionAssetName = "MineSupportVersion";
 
@@ -35,69 +36,83 @@ namespace MineSupport
                 return false;
             }
 
-            var paths = GetBundlePaths();
-            for (var i = 0; i < paths.Length; i++)
+            AssetBundle loadedBundle = null;
+            try
             {
-                var path = paths[i];
-                if (!File.Exists(path))
-                    continue;
+                var bundleBytes = ReadEmbeddedBundle();
+                loadedBundle = AssetBundle.LoadFromMemory(bundleBytes);
+                if (loadedBundle == null)
+                    throw new InvalidOperationException("AssetBundle.LoadFromMemory returned null");
 
-                AssetBundle loadedBundle = null;
+                var versionAsset = loadedBundle.LoadAsset<TextAsset>(VersionAssetName);
+                if (versionAsset == null || !string.Equals(versionAsset.text, BundleVersion, StringComparison.Ordinal))
+                    throw new InvalidDataException("MineSupportVersion is missing or incompatible");
+
+                var loadedMaterial = loadedBundle.LoadAsset<Material>(MaterialAssetName);
+                if (loadedMaterial == null || loadedMaterial.shader == null || !loadedMaterial.shader.isSupported)
+                    throw new InvalidDataException("MineSpriteMaterial or its shader is unavailable");
+
+                if (!loadedMaterial.HasProperty("_GrayFloor")
+                    || !loadedMaterial.HasProperty("_GrayCeiling")
+                    || !loadedMaterial.HasProperty("_HatchScale"))
+                {
+                    throw new InvalidDataException("MineSpriteMaterial property validation failed");
+                }
+
+                bundle = loadedBundle;
+                mineMaterial = loadedMaterial;
+                availabilityState = 1;
+                error = string.Empty;
+                PatchLog.WriteLine(
+                    $"[Mine] embedded visual bundle loaded: resource={BundleResourceName}, "
+                    + $"patchVersion={PatchVersion}, resourceVersion={BundleVersion}");
+                return true;
+            }
+            catch (Exception exception)
+            {
+                availabilityError =
+                    $"resource={BundleResourceName}, patchVersion={PatchVersion}, "
+                    + $"expectedResourceVersion={BundleVersion}, stage=read/load/validate, "
+                    + $"{exception.GetType().Name}: {exception.Message}";
                 try
                 {
-                    loadedBundle = AssetBundle.LoadFromFile(path);
-                    if (loadedBundle == null)
-                        throw new InvalidOperationException("AssetBundle.LoadFromFile returned null");
-
-                    var versionAsset = loadedBundle.LoadAsset<TextAsset>(VersionAssetName);
-                    if (versionAsset == null || !string.Equals(versionAsset.text, BundleVersion, StringComparison.Ordinal))
-                        throw new InvalidDataException("MineSupportVersion is missing or incompatible");
-
-                    var loadedMaterial = loadedBundle.LoadAsset<Material>(MaterialAssetName);
-                    if (loadedMaterial == null || loadedMaterial.shader == null || !loadedMaterial.shader.isSupported)
-                        throw new InvalidDataException("MineSpriteMaterial or its shader is unavailable");
-
-                    if (!loadedMaterial.HasProperty("_GrayFloor")
-                        || !loadedMaterial.HasProperty("_GrayCeiling")
-                        || !loadedMaterial.HasProperty("_HatchScale"))
-                    {
-                        throw new InvalidDataException("MineSpriteMaterial property validation failed");
-                    }
-
-                    bundle = loadedBundle;
-                    mineMaterial = loadedMaterial;
-                    availabilityState = 1;
-                    error = string.Empty;
-                    PatchLog.WriteLine(
-                        $"[Mine] visual bundle loaded: {path}, patchVersion={PatchVersion}, resourceVersion={BundleVersion}");
-                    return true;
+                    loadedBundle?.Unload(false);
+                    bundle?.Unload(false);
                 }
-                catch (Exception exception)
+                catch
                 {
-                    availabilityError =
-                        $"path={path}, patchVersion={PatchVersion}, expectedResourceVersion={BundleVersion}, stage=load/validate, "
-                        + $"{exception.GetType().Name}: {exception.Message}";
-                    try
-                    {
-                        loadedBundle?.Unload(false);
-                        bundle?.Unload(false);
-                    }
-                    catch
-                    {
-                    }
-
-                    bundle = null;
-                    mineMaterial = null;
                 }
+
+                bundle = null;
+                mineMaterial = null;
             }
 
             availabilityState = -1;
-            availabilityError = availabilityError
-                ?? $"paths={string.Join(";", paths)}, patchVersion={PatchVersion}, "
-                    + $"expectedResourceVersion={BundleVersion}, stage=locate, "
-                    + "FileNotFoundException: no MineSupport visual AssetBundle was found";
             error = availabilityError;
             return false;
+        }
+
+        private static byte[] ReadEmbeddedBundle()
+        {
+            using (var stream = typeof(MineVisual).Assembly.GetManifestResourceStream(BundleResourceName))
+            {
+                if (stream == null)
+                    throw new FileNotFoundException("embedded Mine visual AssetBundle was not found", BundleResourceName);
+                if (stream.Length <= 0 || stream.Length > int.MaxValue)
+                    throw new InvalidDataException("embedded Mine visual AssetBundle has an invalid length");
+
+                var bytes = new byte[(int)stream.Length];
+                var offset = 0;
+                while (offset < bytes.Length)
+                {
+                    var read = stream.Read(bytes, offset, bytes.Length - offset);
+                    if (read <= 0)
+                        throw new EndOfStreamException("embedded Mine visual AssetBundle ended unexpectedly");
+                    offset += read;
+                }
+
+                return bytes;
+            }
         }
 
         internal static void Apply(MonoBehaviour note, bool mine, GameObject suppressedOverlay = null)
@@ -144,17 +159,6 @@ namespace MineSupport
             foreach (var state in States.Values)
                 state.Restore();
             States.Clear();
-        }
-
-        private static string[] GetBundlePaths()
-        {
-            var root = AppDomain.CurrentDomain.BaseDirectory;
-            return new[]
-            {
-                Path.Combine(root, "BepInEx", "monomod", "MineSupport", "MineVisuals"),
-                Path.Combine(root, "BepInEx", "monomod", "MineSupport", "minevisuals"),
-                Path.Combine(root, "BepInEx", "monomod", "MineVisuals")
-            };
         }
 
         private sealed class VisualState

@@ -138,7 +138,26 @@ internal static class Program
             "MineRuntime.ClearTransientState does not reset the complete thread-local result context");
 
         var mineVisual = RequireType(module, "MineSupport.MineVisual");
-        Require(AnyMethodCalls(mineVisual, "EnsureAvailable", "AssetBundle", "LoadFromFile"), "MineVisual does not load the AssetBundle");
+        var mineVisualResource = module.Resources
+            .OfType<EmbeddedResource>()
+            .SingleOrDefault(resource => resource.Name == "MineSupport.MineVisuals");
+        Require(mineVisualResource != null, "embedded MineSupport.MineVisuals resource is missing");
+        var mineVisualBytes = mineVisualResource.GetResourceData();
+        Require(mineVisualBytes.Length >= 7
+                && mineVisualBytes[0] == (byte)'U'
+                && mineVisualBytes[1] == (byte)'n'
+                && mineVisualBytes[2] == (byte)'i'
+                && mineVisualBytes[3] == (byte)'t'
+                && mineVisualBytes[4] == (byte)'y'
+                && mineVisualBytes[5] == (byte)'F'
+                && mineVisualBytes[6] == (byte)'S',
+            "embedded Mine visual resource is not a UnityFS AssetBundle");
+        Require(AnyMethodCalls(mineVisual, "ReadEmbeddedBundle", "Assembly", "GetManifestResourceStream"),
+            "MineVisual does not read the embedded bundle from Assembly-CSharp");
+        Require(AnyMethodCalls(mineVisual, "EnsureAvailable", "AssetBundle", "LoadFromMemory"),
+            "MineVisual does not load the embedded AssetBundle from memory");
+        Require(!AnyMethodCalls(mineVisual, "EnsureAvailable", "AssetBundle", "LoadFromFile"),
+            "MineVisual still depends on an external AssetBundle file");
         Require(AnyMethodCalls(mineVisual, "Apply", null, "GetComponentsInChildren"), "MineVisual does not cache child renderers on first apply");
         Require(AnyMethodCalls(mineVisual, "Clear", null, "Restore"), "MineVisual does not restore cached renderer state");
         Require(AnyMethodCalls(mineVisual, "Apply", "GameObject", "SetActive")

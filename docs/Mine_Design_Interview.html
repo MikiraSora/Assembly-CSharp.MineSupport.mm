@@ -441,9 +441,9 @@
       <h1>Mine 机制设计访谈记录</h1>
       <p class="subtitle">用于收敛游戏内 Mine 物件的产品语义、数据契约、判定、计分、表现和兼容边界。代码可以回答的事实直接记录；只有必须由产品意图决定的分支才进入访谈。</p>
       <dl class="meta">
-        <div><dt>状态</dt><dd>设计已冻结；Q012/Q013 读取兼容性修订已实现并部署，实机待用户验收</dd></div>
+        <div><dt>状态</dt><dd>设计已冻结；读取兼容性与内置视觉资源版已实现并部署，实机待用户验收</dd></div>
         <div><dt>当前问题</dt><dd>产品访谈已完成 / Q001-Q026；剩余为用户实机矩阵</dd></div>
-        <div><dt>最后更新</dt><dd><time datetime="2026-07-24T03:26:31+08:00">2026-07-24 03:26:31 +08:00</time></dd></div>
+        <div><dt>最后更新</dt><dd><time datetime="2026-07-24T03:48:44+08:00">2026-07-24 03:48:44 +08:00</time></dd></div>
         <div><dt>记录位置</dt><dd><code>docs/Mine_Design_Interview.html</code></dd></div>
       </dl>
     </div>
@@ -652,8 +652,8 @@
             </tr>
             <tr>
               <td>参考视觉资源</td>
-              <td>MajdataView 的 <code>MineSpriteEffect</code> shader 使用 Rec.709 亮度并映射到 <code>0.58..1.0</code> 灰阶，保留纹理轮廓与透明度；目标 MonoMod 项目当前不携带 shader/material 或 AssetBundle。</td>
-              <td>若采用真正灰白效果，部署产物必须增加与 patch 同版本的资源包和明确的装载/恢复生命周期。</td>
+              <td>MajdataView 的 <code>MineSpriteEffect</code> shader 使用 Rec.709 亮度并映射到 <code>0.58..1.0</code> 灰阶；当前实现已把配套 AssetBundle 作为 <code>MineSupport.MineVisuals</code> 嵌入 patch，并由 MonoMod 复制到最终 <code>Assembly-CSharp</code>。</td>
+              <td>运行时通过 <code>GetManifestResourceStream</code> 与 <code>AssetBundle.LoadFromMemory</code> 加载，不再需要外置资源目录，同时保留版本验证和完整恢复生命周期。</td>
             </tr>
             <tr>
               <td>对象池恢复</td>
@@ -1125,7 +1125,7 @@
         </div>
 
         <div class="callout">
-          <p><strong>用户结论：方案 A。</strong> 随 patch 部署专用灰阶 shader/material AssetBundle，采用 Rec.709 亮度映射；复用基础皮肤轮廓和动画，并在物件结束或回池时完整恢复原材质、颜色、Alpha 与缓存状态。</p>
+          <p><strong>用户结论：方案 A，后续确认允许内置资源。</strong> 专用灰阶 shader/material AssetBundle 作为程序集资源随 patch DLL 部署，并从内存加载；采用 Rec.709 亮度映射，复用基础皮肤轮廓和动画，并在物件结束或回池时完整恢复原材质、颜色、Alpha 与缓存状态。</p>
         </div>
       </section>
 
@@ -1137,7 +1137,7 @@
         <div class="option-grid">
           <article class="option recommended">
             <h3>方案 A：仅拒绝含 Mine 的谱面（推荐）</h3>
-            <p>Mine 资源验证失败时不开始当前谱面或难度，干净返回加载失败；普通谱面继续可用。Debug/Release 都写一次 Error 日志，包含资源路径、patch/资源版本、失败阶段和异常信息，避免逐物件刷屏。</p>
+            <p>Mine 资源验证失败时不开始当前谱面或难度，干净返回加载失败；普通谱面继续可用。Debug/Release 都写一次 Error 日志，包含程序集资源名、patch/资源版本、失败阶段和异常信息，避免逐物件刷屏。</p>
           </article>
           <article class="option">
             <h3>方案 B：降级为简单 tint 后继续</h3>
@@ -1150,7 +1150,7 @@
         </div>
 
         <div class="callout">
-          <p><strong>用户结论：方案 A。</strong> AssetBundle、材质、shader 或版本验证失败时，只拒绝含 Mine 的当前谱面/难度；普通谱面继续可用。Debug/Release 均写一次包含资源路径、版本、失败阶段和异常信息的 Error 日志，不逐物件刷屏。</p>
+          <p><strong>用户结论：方案 A。</strong> 嵌入 AssetBundle、材质、shader 或版本验证失败时，只拒绝含 Mine 的当前谱面/难度；普通谱面继续可用。Debug/Release 均写一次包含资源名、版本、失败阶段和异常信息的 Error 日志，不逐物件刷屏。</p>
         </div>
       </section>
 
@@ -1345,9 +1345,9 @@
           <tbody>
             <tr><td>构建</td><td>PASS</td><td>Debug/Release 均为 0 warning、0 error。</td></tr>
             <tr><td>自动化</td><td>PASS</td><td>Contains 型 Mine、正则 Soflan、混合 <code>!m</code>/<code>!y</code>/<code>#groupFspeed</code> 排列、结果来源、结构错误定位、三段嵌套连接 Slide 全链、661 条全类型 Mine 谱，以及 Mine/Soflan 两端的 Release UTF-8 Error 日志。</td></tr>
-            <tr><td>视觉资源</td><td>PASS</td><td>Unity 2018.4.7f1 构建后重开并验证版本 TextAsset、Material 与 shader。</td></tr>
-            <tr><td>MonoMod</td><td>PASS</td><td>按 Assets、Dp、Mine、Soflan 实际顺序离线合并；验证解析/Soflan、AutoPlay、SetResult、清理、资源缓存、EX 覆盖恢复、Slide Break 闪烁抑制及热点分配边界。</td></tr>
-            <tr><td>部署</td><td>完成</td><td>新版 <code>Assembly-CSharp.MineSupport.mm.dll</code>、<code>Assembly-CSharp.SoflanSupport.mm.dll</code> 与 <code>MineSupport/MineVisuals</code> 已部署并核对 SHA-256，旧版使用非加载后缀备份。</td></tr>
+            <tr><td>视觉资源</td><td>PASS</td><td>Unity 2018.4.7f1 构建后重开并验证版本 TextAsset、Material 与 shader；嵌入资源的长度、UnityFS 头和 SHA-256 与源产物一致。</td></tr>
+            <tr><td>MonoMod</td><td>PASS</td><td>按 Assets、Dp、Mine、Soflan 实际顺序离线合并；验证嵌入资源复制、内存加载、解析/Soflan、AutoPlay、SetResult、清理、资源缓存、EX 覆盖恢复、Slide Break 闪烁抑制及热点分配边界。</td></tr>
+            <tr><td>部署</td><td>完成</td><td><code>Assembly-CSharp.MineSupport.mm.dll</code> 已内置视觉资源，与 <code>Assembly-CSharp.SoflanSupport.mm.dll</code> 一并部署并核对 SHA-256；外置 <code>MineSupport</code> 目录不再是运行时依赖。</td></tr>
             <tr><td>实机</td><td>未执行</td><td>用户禁止助手自行启动游戏；配置已恢复，当前没有目标游戏进程。</td></tr>
           </tbody>
         </table>
